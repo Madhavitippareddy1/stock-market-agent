@@ -1,0 +1,46 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "RequiredProjectTag",
+    "ParameterValue": "dstrmaysam"
+  },
+  {
+    "ParameterKey": "GitHubOwner",
+    "ParameterValue": "Madhavitippareddy1"
+  },
+  {
+    "ParameterKey": "GitHubRepo",
+    "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "GitHubBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "CodeStarConnectionArn",
+    "ParameterValue": "arn:aws:codestar-connections:eu-west-2:666127452756:connection/7ae6f054-0794-426d-9bec-38f2a851f529"
+  },
+  {
+    "ParameterKey": "EcrRepositoryName",
+    "ParameterValue": "dev-dstrmaysam-stock-market-agent-repo"
+  },
+  {
+    "ParameterKey": "EcsClusterName",
+    "ParameterValue": "dev-dstrmaysam-stock-market-agent-cluster"
+  },
+  {
+    "ParameterKey": "EcsServiceName",
+    "ParameterValue": "dev-dstrmaysam-stock-market-agent-service"
+  },
+  {
+    "ParameterKey": "ContainerName",
+    "ParameterValue": "stock-market-agent"
+  }
+]

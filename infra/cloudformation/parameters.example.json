@@ -1,0 +1,86 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "RequiredProjectTag",
+    "ParameterValue": "dstrmaysam"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-xxxxxxxxxxxxxxxxx"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-xxxxxxxxxxxxxxxxx,subnet-yyyyyyyyyyyyyyyyy"
+  },
+  {
+    "ParameterKey": "DatabaseSubnetIds",
+    "ParameterValue": "subnet-privatexxxxxxxx,subnet-privateyyyyyyyy"
+  },
+  {
+    "ParameterKey": "AssignPublicIp",
+    "ParameterValue": "ENABLED"
+  },
+  {
+    "ParameterKey": "AllowedIngressCidr",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "McpServerUrl",
+    "ParameterValue": "https://your-shared-mcp-server/sse"
+  },
+  {
+    "ParameterKey": "ReportsBucketName",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "OpenSearchEndpoint",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "OpenSearchIndex",
+    "ParameterValue": "financial-report-chunks"
+  },
+  {
+    "ParameterKey": "GitHubOwner",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "GitHubRepo",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "GitHubBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "CodeStarConnectionArn",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "DatabaseName",
+    "ParameterValue": "stockagent"
+  },
+  {
+    "ParameterKey": "DatabaseUsername",
+    "ParameterValue": "stockadmin"
+  },
+  {
+    "ParameterKey": "DatabaseInstanceClass",
+    "ParameterValue": "db.t4g.micro"
+  },
+  {
+    "ParameterKey": "DatabaseAllocatedStorage",
+    "ParameterValue": "20"
+  },
+  {
+    "ParameterKey": "DatabaseBackupRetentionDays",
+    "ParameterValue": "7"
+  }
+]

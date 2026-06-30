@@ -1,1 +1,153 @@
-# stock-market-agent
+# Stock Market Agent
+
+A Streamlit and AWS based multi-agent stock research application.
+
+This project is the clean new version of the stock agent platform. It is
+designed to use a shared MCP server for tools, AWS for deployment, and
+CodePipeline instead of GitHub Actions.
+
+## Agents
+
+- Stock Agent: stock quote, company profile, market data, comparison.
+- RAG Agent: PDF/text report analysis and financial-report search.
+- User Agent: user profile, watchlist, risk preference.
+- Portfolio Agent: holdings, allocation, gain/loss, risk alerts.
+- Investment Agent: LangGraph route that uses stock/user/portfolio context and
+  Amazon Bedrock for educational investment research.
+
+## LLM and orchestration
+
+- LangGraph orchestrates the multi-agent routing.
+- Amazon Bedrock is used as the LLM platform.
+- Amazon Nova Lite is configured for generation.
+- Amazon Titan Text Embeddings V2 is configured for embeddings.
+
+See `docs/LANGGRAPH_BEDROCK.md`.
+
+## Shared MCP server
+
+This project does not create a separate MCP server. It connects to the common
+MCP server used by your five projects.
+
+Required MCP tools are documented in:
+
+- `docs/MCP_TOOLS_CONTRACT.md`
+
+## AWS deployment
+
+The deployment design uses:
+
+- Streamlit
+- Docker
+- Amazon ECR
+- Amazon ECS Fargate
+- AWS CodePipeline
+- AWS CodeBuild
+- AWS CloudFormation
+- Amazon RDS PostgreSQL
+- AWS Secrets Manager
+- Amazon S3
+- Amazon Bedrock
+- Amazon OpenSearch Serverless
+- Amazon CloudWatch
+
+CloudFormation starter infrastructure is available in:
+
+- `infra/cloudformation/`
+
+See `docs/CLOUDFORMATION_AWS_SETUP.md` for setup steps.
+For the existing AWS deployment, use the safer pipeline-only template:
+
+- `infra/cloudformation/codepipeline-existing-resources.yml`
+- `infra/cloudformation/codepipeline-existing-parameters.example.json`
+- `docs/AWS_CLOUDFORMATION_CICD.md`
+
+AWS resource names follow this pattern:
+
+```text
+{environment}-dstrmaysam-{project-name}-{resource}
+```
+
+Example:
+
+```text
+dev-dstrmaysam-stock-market-agent-cluster
+dev-dstrmaysam-stock-market-agent-postgres
+```
+
+All CloudFormation-created resources include the required capstone tag:
+
+```text
+dstrmaysam=dstrmaysam
+```
+
+RDS PostgreSQL is private/internal only. ECS can reach RDS on port `5432`;
+users cannot connect to the database directly.
+
+### Current AWS deployment
+
+The Streamlit client is deployed on ECS Fargate:
+
+```text
+http://3.10.228.209:8501
+```
+
+The app connects to the AWS-hosted shared MCP Tools server:
+
+```text
+http://16.60.156.10:8000/sse
+```
+
+Current AWS resources:
+
+```text
+ECR repo: dev-dstrmaysam-stock-market-agent-repo
+ECS cluster: dev-dstrmaysam-stock-market-agent-cluster
+ECS service: dev-dstrmaysam-stock-market-agent-service
+Task definition: dev-dstrmaysam-stock-market-agent-task
+CloudWatch log group: /ecs/dev-dstrmaysam-stock-market-agent
+```
+
+Note: these URLs use public ECS task IPs. If a task restarts, the IP may change.
+For a stable production URL, place the ECS services behind an Application Load
+Balancer or API Gateway/custom domain.
+
+## Local run
+
+```bash
+uv sync
+copy .env.example .env
+uv run streamlit run app.py
+```
+
+Example questions to test:
+
+```text
+Cisco Systems share price
+compare Apple and Meta
+show my watchlist
+analyze my portfolio
+should I buy PepsiCo?
+suggest me the best stock of this month
+```
+
+The local chatbot stores persistent conversation history in:
+
+```text
+data/chat_history.sqlite3
+```
+
+This file is ignored by Git. For AWS production, replace the local SQLite
+history service with RDS PostgreSQL or DynamoDB.
+
+## Test
+
+```bash
+uv run pytest
+```
+
+## Build Docker image
+
+```bash
+docker build -t stock-market-agent .
+```

@@ -1,0 +1,94 @@
+[
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "dev"
+  },
+  {
+    "ParameterKey": "RequiredProjectTag",
+    "ParameterValue": "dstrmaysam"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-01b2d9c88791293f6"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-0fb022fdd3005325f"
+  },
+  {
+    "ParameterKey": "DatabaseSubnetIds",
+    "ParameterValue": "subnet-0175d22599862cd70,subnet-0fb022fdd3005325f,subnet-084b8b27abab667a0"
+  },
+  {
+    "ParameterKey": "AssignPublicIp",
+    "ParameterValue": "ENABLED"
+  },
+  {
+    "ParameterKey": "AllowedIngressCidr",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "McpServerUrl",
+    "ParameterValue": "http://16.60.156.10:8000/sse"
+  },
+  {
+    "ParameterKey": "ReportsBucketName",
+    "ParameterValue": "dev-dstrmaysam-stock-market-agent-bucket"
+  },
+  {
+    "ParameterKey": "OpenSearchEndpoint",
+    "ParameterValue": "https://vyj2nm38y6runqk16ini.eu-west-2.aoss.amazonaws.com"
+  },
+  {
+    "ParameterKey": "OpenSearchIndex",
+    "ParameterValue": "financial-report-chunks"
+  },
+  {
+    "ParameterKey": "BedrockChatModelId",
+    "ParameterValue": "amazon.nova-lite-v1:0"
+  },
+  {
+    "ParameterKey": "BedrockEmbeddingModelId",
+    "ParameterValue": "amazon.titan-embed-text-v2:0"
+  },
+  {
+    "ParameterKey": "GitHubOwner",
+    "ParameterValue": "Madhavitippareddy1"
+  },
+  {
+    "ParameterKey": "GitHubRepo",
+    "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "GitHubBranch",
+    "ParameterValue": "main"
+  },
+  {
+    "ParameterKey": "CodeStarConnectionArn",
+    "ParameterValue": "arn:aws:codestar-connections:eu-west-2:666127452756:connection/REPLACE_WITH_CONNECTION_ID"
+  },
+  {
+    "ParameterKey": "DatabaseName",
+    "ParameterValue": "stockagent"
+  },
+  {
+    "ParameterKey": "DatabaseUsername",
+    "ParameterValue": "stockadmin"
+  },
+  {
+    "ParameterKey": "DatabaseInstanceClass",
+    "ParameterValue": "db.t4g.micro"
+  },
+  {
+    "ParameterKey": "DatabaseAllocatedStorage",
+    "ParameterValue": "20"
+  },
+  {
+    "ParameterKey": "DatabaseBackupRetentionDays",
+    "ParameterValue": "7"
+  }
+]
