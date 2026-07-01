@@ -12,6 +12,7 @@ from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.graphs.langgraph_supervisor import LangGraphSupervisor
 from stock_market_agent.config import get_settings
 from stock_market_agent.services.chat_history import ChatHistoryService
+from stock_market_agent.services import local_market_data
 from stock_market_agent.services.metrics import get_metrics_service
 from stock_market_agent.services.mcp_client import McpClient
 from stock_market_agent.services.prompt_catalog import get_prompt_catalog
@@ -40,8 +41,19 @@ def format_market_cap(value: float | int | None) -> str:
 def fetch_live_quotes(client: McpClient, tickers: list[str]) -> list[dict]:
     rows: list[dict] = []
     for ticker in tickers:
-        result = client.call_tool("get_stock_quote", {"ticker_or_company": ticker})
-        quote = result.get("quote", {})
+        # Use direct quote fallback for UI charts so the page stays responsive
+        # even when the shared MCP server is unavailable.
+        fallback_quote = local_market_data.get_quote(ticker)
+        quote = {
+            "ticker": fallback_quote.ticker,
+            "company_name": fallback_quote.company_name,
+            "price": fallback_quote.price,
+            "previous_close": fallback_quote.previous_close,
+            "currency": fallback_quote.currency,
+            "market_cap": fallback_quote.market_cap,
+            "sector": fallback_quote.sector,
+            "industry": fallback_quote.industry,
+        }
         rows.append(
             {
                 "Ticker": quote.get("ticker", ticker),
@@ -65,8 +77,12 @@ def fetch_investment_users(client: McpClient) -> list[dict]:
     try:
         result = client.call_tool("list_investment_users", {})
     except Exception:
-        return []
-    return result.get("users", [])
+        return local_market_data.list_investment_users()
+
+    users = result.get("users", [])
+    if users:
+        return users
+    return local_market_data.list_investment_users()
 
 
 def user_option_label(user_id: str, users: list[dict]) -> str:
