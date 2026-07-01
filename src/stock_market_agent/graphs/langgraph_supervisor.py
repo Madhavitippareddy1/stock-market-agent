@@ -10,6 +10,7 @@ from stock_market_agent.agents.stock_agent import StockAgent
 from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.models import AgentResult
 from stock_market_agent.services.bedrock_service import BedrockService
+from stock_market_agent.services.observability import get_observability
 
 
 RouteName = Literal["stock", "rag", "user", "portfolio", "investment"]
@@ -57,8 +58,44 @@ class LangGraphSupervisor:
             "user_id": user_id,
             "uploaded_file": uploaded_file,
         }
-        final_state = self.graph.invoke(state)
-        return final_state["result"]
+        observability = get_observability()
+        with observability.trace_agent_run(
+            name="stock-market-agent-request",
+            question=question,
+            user_id=user_id,
+            session_id=user_id,
+            metadata={
+                "has_uploaded_file": uploaded_file is not None,
+                "conversation_context_chars": len(conversation_context or ""),
+            },
+        ) as span:
+            final_state = self.graph.invoke(state)
+            result = final_state["result"]
+            route = final_state.get("route")
+            if span is not None:
+                try:
+                    span.update(
+                        output={
+                            "agent": result.get("agent"),
+                            "route": route,
+                            "answer": result.get("answer"),
+                            "sources": result.get("sources", []),
+                        },
+                        metadata={
+                            "route": route,
+                            "agent": result.get("agent"),
+                            "source_count": len(result.get("sources", [])),
+                        },
+                    )
+                    span.score_trace(
+                        name="source_count",
+                        value=float(len(result.get("sources", []))),
+                        data_type="NUMERIC",
+                        comment="Number of sources returned by the selected agent.",
+                    )
+                except Exception:
+                    pass
+            return result
 
     def _build_graph(self):
         workflow = StateGraph(AgentState)

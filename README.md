@@ -24,6 +24,14 @@ CodePipeline instead of GitHub Actions.
 
 See `docs/LANGGRAPH_BEDROCK.md`.
 
+## Observability and RAG evaluation
+
+- Langfuse captures chatbot/agent traces when enabled.
+- RAGAS-compatible scores are generated for RAG answers and shown in Streamlit.
+- Scores are also sent to Langfuse as trace scores when credentials are configured.
+
+See `docs/LANGFUSE_RAGAS.md`.
+
 ## Shared MCP server
 
 This project does not create a separate MCP server. It connects to the common

@@ -10,6 +10,7 @@ from pypdf import PdfReader
 from stock_market_agent.models import AgentResult
 from stock_market_agent.config import get_settings
 from stock_market_agent.services.mcp_client import McpClient
+from stock_market_agent.services.observability import get_observability, get_ragas_evaluator
 from stock_market_agent.services.opensearch_rag import OpenSearchRagService
 
 
@@ -27,11 +28,21 @@ class RagAgent:
             try:
                 rag_result = self.opensearch_rag.search(question)
                 if rag_result.chunks:
+                    contexts = [str(chunk.get("text", "")) for chunk in rag_result.chunks]
+                    evaluation = get_ragas_evaluator().evaluate(
+                        question=question,
+                        answer=rag_result.answer,
+                        contexts=contexts,
+                    )
+                    get_observability().score_current_trace(evaluation)
                     return AgentResult(
                         agent="RAG Agent",
                         answer=rag_result.answer,
                         sources=rag_result.sources,
-                        data={"retrieved_chunks": rag_result.chunks},
+                        data={
+                            "retrieved_chunks": rag_result.chunks,
+                            "ragas": evaluation.as_dict(),
+                        },
                     )
             except Exception as exc:
                 # Fall back to MCP RAG so the UI still responds if OpenSearch is not ready.
@@ -72,6 +83,12 @@ class RagAgent:
         chunks = chunk_text(document_text)
         selected_chunks = retrieve_relevant_chunks(question, chunks)
         answer = build_grounded_report_answer(question, uploaded_file.name, selected_chunks)
+        evaluation = get_ragas_evaluator().evaluate(
+            question=question,
+            answer=answer,
+            contexts=selected_chunks,
+        )
+        get_observability().score_current_trace(evaluation)
 
         return AgentResult(
             agent="RAG Agent",
@@ -82,6 +99,7 @@ class RagAgent:
                 "chunk_count": len(chunks),
                 "retrieved_chunk_count": len(selected_chunks),
                 "retrieved_chunks": selected_chunks,
+                "ragas": evaluation.as_dict(),
             },
         )
 
@@ -117,6 +135,12 @@ class RagAgent:
             f"s3://{self.settings.reports_bucket}/{key}",
             selected_chunks,
         )
+        evaluation = get_ragas_evaluator().evaluate(
+            question=question,
+            answer=answer,
+            contexts=selected_chunks,
+        )
+        get_observability().score_current_trace(evaluation)
         return AgentResult(
             agent="RAG Agent",
             answer=answer,
@@ -128,6 +152,7 @@ class RagAgent:
                 "retrieved_chunk_count": len(selected_chunks),
                 "retrieved_chunks": selected_chunks,
                 "opensearch_status": "OpenSearch unavailable; answered from S3 report fallback.",
+                "ragas": evaluation.as_dict(),
             },
         )
 

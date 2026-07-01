@@ -46,6 +46,37 @@ Parameters:
   BedrockEmbeddingModelId:
     Type: String
     Default: amazon.titan-embed-text-v2:0
+  LangfuseEnabled:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  LangfusePublicKey:
+    Type: String
+    Default: ""
+  LangfuseSecretKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+  LangfuseBaseUrl:
+    Type: String
+    Default: https://cloud.langfuse.com
+  LangfuseFlushOnRequest:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  RagasEnabled:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+  RagasScorePrefix:
+    Type: String
+    Default: ragas
   GitHubOwner:
     Type: String
     Default: ""
@@ -82,6 +113,7 @@ Parameters:
 
 Conditions:
   HasReportsBucket: !Not [!Equals [!Ref ReportsBucketName, ""]]
+  HasLangfuseSecret: !Not [!Equals [!Ref LangfuseSecretKey, ""]]
   CreatePipeline: !And
     - !Not [!Equals [!Ref GitHubOwner, ""]]
     - !Not [!Equals [!Ref GitHubRepo, ""]]
@@ -234,6 +266,21 @@ Resources:
         - Key: dstrmaysam
           Value: !Ref RequiredProjectTag
 
+  LangfuseSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: HasLangfuseSecret
+    Properties:
+      Name: !Sub "${Environment}/${RequiredProjectTag}/${ProjectName}/langfuse"
+      Description: Langfuse secret key for Stock Market Agent observability
+      SecretString: !Sub '{"LANGFUSE_SECRET_KEY":"${LangfuseSecretKey}"}'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: dstrmaysam
+          Value: !Ref RequiredProjectTag
+
   DatabaseSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
@@ -299,7 +346,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - secretsmanager:GetSecretValue
-                Resource: !Ref DatabaseSecret
+                Resource:
+                  - !Ref DatabaseSecret
+                  - !If
+                    - HasLangfuseSecret
+                    - !Ref LangfuseSecret
+                    - !Ref AWS::NoValue
       Tags:
         - Key: Project
           Value: !Ref ProjectName
@@ -406,6 +458,18 @@ Resources:
               Value: !Ref BedrockChatModelId
             - Name: BEDROCK_EMBEDDING_MODEL_ID
               Value: !Ref BedrockEmbeddingModelId
+            - Name: LANGFUSE_ENABLED
+              Value: !Ref LangfuseEnabled
+            - Name: LANGFUSE_PUBLIC_KEY
+              Value: !Ref LangfusePublicKey
+            - Name: LANGFUSE_BASE_URL
+              Value: !Ref LangfuseBaseUrl
+            - Name: LANGFUSE_FLUSH_ON_REQUEST
+              Value: !Ref LangfuseFlushOnRequest
+            - Name: RAGAS_ENABLED
+              Value: !Ref RagasEnabled
+            - Name: RAGAS_SCORE_PREFIX
+              Value: !Ref RagasScorePrefix
             - Name: DATABASE_HOST
               Value: !GetAtt DatabaseInstance.Endpoint.Address
             - Name: DATABASE_PORT
@@ -419,6 +483,11 @@ Resources:
               ValueFrom: !Sub "${DatabaseSecret}:username::"
             - Name: DATABASE_PASSWORD
               ValueFrom: !Sub "${DatabaseSecret}:password::"
+            - !If
+              - HasLangfuseSecret
+              - Name: LANGFUSE_SECRET_KEY
+                ValueFrom: !Sub "${LangfuseSecret}:LANGFUSE_SECRET_KEY::"
+              - !Ref AWS::NoValue
           LogConfiguration:
             LogDriver: awslogs
             Options:

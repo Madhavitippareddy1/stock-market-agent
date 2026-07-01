@@ -56,6 +56,34 @@
     "ParameterValue": "amazon.titan-embed-text-v2:0"
   },
   {
+    "ParameterKey": "LangfuseEnabled",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "LangfusePublicKey",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "LangfuseSecretKey",
+    "ParameterValue": ""
+  },
+  {
+    "ParameterKey": "LangfuseBaseUrl",
+    "ParameterValue": "https://cloud.langfuse.com"
+  },
+  {
+    "ParameterKey": "LangfuseFlushOnRequest",
+    "ParameterValue": "false"
+  },
+  {
+    "ParameterKey": "RagasEnabled",
+    "ParameterValue": "true"
+  },
+  {
+    "ParameterKey": "RagasScorePrefix",
+    "ParameterValue": "ragas"
+  },
+  {
     "ParameterKey": "GitHubOwner",
     "ParameterValue": "Madhavitippareddy1"
   },

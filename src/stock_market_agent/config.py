@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_base_url: str = "https://cloud.langfuse.com"
+    langfuse_flush_on_request: bool = False
+
+    ragas_enabled: bool = True
+    ragas_score_prefix: str = "ragas"
+    ragas_min_context_precision: float = 0.45
+    ragas_min_faithfulness: float = 0.55
 
 
 def get_settings() -> Settings:

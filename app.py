@@ -1061,6 +1061,34 @@ def show_agent_routing_help() -> None:
     )
 
 
+def render_ragas_scores(result: dict[str, Any]) -> None:
+    ragas = (result.get("data") or {}).get("ragas")
+    if not ragas:
+        return
+
+    scores = ragas.get("scores", [])
+    if not scores:
+        return
+
+    st.markdown("### RAGAS evaluation")
+    cols = st.columns(min(len(scores), 4))
+    for index, score in enumerate(scores[:4]):
+        value = score.get("value", 0)
+        try:
+            display_value = f"{float(value):.2f}"
+        except (TypeError, ValueError):
+            display_value = str(value)
+        cols[index].metric(score.get("name", "score"), display_value)
+
+    if ragas.get("passed"):
+        st.success(f"RAG quality gate passed ({ragas.get('evaluator')}).")
+    else:
+        st.warning(f"RAG quality gate needs review ({ragas.get('evaluator')}).")
+
+    with st.expander("RAGAS score details"):
+        st.json(ragas)
+
+
 st.set_page_config(page_title="Stock Market Agent", layout="wide")
 apply_app_styles()
 
@@ -1207,6 +1235,7 @@ with tab_research:
             chat_history.add_message(session_id, "assistant", result["answer"])
             st.subheader(result["agent"])
             st.write(result["answer"])
+            render_ragas_scores(result)
             show_stock_advice_disclaimer()
 
             if result.get("sources"):
