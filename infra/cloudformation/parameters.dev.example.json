@@ -84,6 +84,18 @@
     "ParameterValue": "ragas"
   },
   {
+    "ParameterKey": "ObservabilityMetricsPath",
+    "ParameterValue": "data/observability_metrics.jsonl"
+  },
+  {
+    "ParameterKey": "PromptCatalogPath",
+    "ParameterValue": "data/prompts/prompts.json"
+  },
+  {
+    "ParameterKey": "ActivePromptEnvironment",
+    "ParameterValue": "production"
+  },
+  {
     "ParameterKey": "GitHubOwner",
     "ParameterValue": "Madhavitippareddy1"
   },

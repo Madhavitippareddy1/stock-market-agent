@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "description": "Golden dataset for Stock Market Agent regression and quality checks. Covers happy paths, edge cases, routing, RAG, portfolio, watchlist, and investment questions.",
+  "examples": [
+    {"id": "golden-001", "category": "stock_price", "question": "Cisco Systems share price", "expected_agent": "Stock Agent", "expected_terms": ["Cisco", "price"]},
+    {"id": "golden-002", "category": "stock_price", "question": "Walmart Inc stock price", "expected_agent": "Stock Agent", "expected_terms": ["Walmart", "price"]},
+    {"id": "golden-003", "category": "stock_price", "question": "Target Corporation share price", "expected_agent": "Stock Agent", "expected_terms": ["Target", "price"]},
+    {"id": "golden-004", "category": "stock_comparison", "question": "compare Apple and Meta stocks", "expected_agent": "Stock Agent", "expected_terms": ["AAPL", "META"]},
+    {"id": "golden-005", "category": "stock_comparison", "question": "compare Nvidia with Amazon", "expected_agent": "Stock Agent", "expected_terms": ["NVDA", "AMZN"]},
+    {"id": "golden-006", "category": "investment", "question": "is buying PepsiCo shares right time or not", "expected_agent": "Investment Agent", "expected_terms": ["PepsiCo", "risk", "disclaimer"]},
+    {"id": "golden-007", "category": "investment", "question": "suggest me the best stock of this month", "expected_agent": "Investment Agent", "expected_terms": ["suggest", "risk", "educational"]},
+    {"id": "golden-008", "category": "portfolio", "question": "analyze my portfolio", "expected_agent": "Portfolio Agent", "expected_terms": ["portfolio", "risk"]},
+    {"id": "golden-009", "category": "portfolio", "question": "show portfolio risk alerts", "expected_agent": "Portfolio Agent", "expected_terms": ["risk", "alert"]},
+    {"id": "golden-010", "category": "watchlist", "question": "show my watchlist", "expected_agent": "User Agent", "expected_terms": ["watchlist"]},
+    {"id": "golden-011", "category": "user", "question": "show my risk profile", "expected_agent": "User Agent", "expected_terms": ["risk", "profile"]},
+    {"id": "golden-012", "category": "rag", "question": "Apple 5 years report", "expected_agent": "RAG Agent", "expected_terms": ["AAPL", "report"]},
+    {"id": "golden-013", "category": "rag", "question": "analyse Nvidia 5 year financial report", "expected_agent": "RAG Agent", "expected_terms": ["NVDA", "financial"]},
+    {"id": "golden-014", "category": "rag", "question": "summarize Costco annual report", "expected_agent": "RAG Agent", "expected_terms": ["COST", "report"]},
+    {"id": "golden-015", "category": "edge_case", "question": "what is the stock price for CSX Corporation", "expected_agent": "Stock Agent", "expected_terms": ["CSX", "price"]},
+    {"id": "golden-016", "category": "edge_case", "question": "can I buy Target", "expected_agent": "Investment Agent", "expected_terms": ["Target", "risk"]},
+    {"id": "golden-017", "category": "edge_case", "question": "MRVL quarterly report summary", "expected_agent": "RAG Agent", "expected_terms": ["MRVL", "report"]},
+    {"id": "golden-018", "category": "dashboard", "question": "refresh top 10 stocks", "expected_agent": "Stock Agent", "expected_terms": ["top", "stocks"]},
+    {"id": "golden-019", "category": "investment", "question": "recommend best sector for my portfolio", "expected_agent": "Investment Agent", "expected_terms": ["sector", "portfolio"]},
+    {"id": "golden-020", "category": "portfolio", "question": "show my profit and loss for last 5 years", "expected_agent": "Portfolio Agent", "expected_terms": ["profit", "loss"]},
+    {"id": "golden-021", "category": "rag", "question": "Amazon cash flow in the 5 year report", "expected_agent": "RAG Agent", "expected_terms": ["AMZN", "cash flow"]},
+    {"id": "golden-022", "category": "stock_comparison", "question": "compare Microsoft and Google recent performance", "expected_agent": "Stock Agent", "expected_terms": ["MSFT", "GOOGL"]},
+    {"id": "golden-023", "category": "watchlist", "question": "which stocks are in my saved watchlist", "expected_agent": "User Agent", "expected_terms": ["watchlist"]},
+    {"id": "golden-024", "category": "investment", "question": "should I sell Tesla from my portfolio", "expected_agent": "Investment Agent", "expected_terms": ["Tesla", "portfolio", "risk"]}
+  ]
+}

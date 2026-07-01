@@ -31,6 +31,8 @@ See `docs/LANGGRAPH_BEDROCK.md`.
 - Scores are also sent to Langfuse as trace scores when credentials are configured.
 
 See `docs/LANGFUSE_RAGAS.md`.
+See `docs/OBSERVABILITY_AND_QUALITY_REQUIREMENTS.md` for the dashboard,
+prompt catalogue, golden dataset, RAGAS, and trajectory evaluation checklist.
 
 ## Shared MCP server
 

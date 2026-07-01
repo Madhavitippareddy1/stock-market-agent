@@ -11,4 +11,6 @@ build/
 data/uploads/*
 !data/uploads/.gitkeep
 data/*.sqlite3
+data/observability_metrics.jsonl
+data/evaluation/latest_quality_report.json
 streamlit*.log

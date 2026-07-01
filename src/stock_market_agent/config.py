@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     ragas_min_context_precision: float = 0.45
     ragas_min_faithfulness: float = 0.55
 
+    observability_metrics_path: str = "data/observability_metrics.jsonl"
+    prompt_catalog_path: str = "data/prompts/prompts.json"
+    active_prompt_environment: str = "production"
+
 
 def get_settings() -> Settings:
     return Settings()

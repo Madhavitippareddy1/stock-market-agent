@@ -10,7 +10,9 @@ from stock_market_agent.agents.stock_agent import StockAgent
 from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.models import AgentResult
 from stock_market_agent.services.bedrock_service import BedrockService
+from stock_market_agent.services.metrics import get_metrics_service
 from stock_market_agent.services.observability import get_observability
+from stock_market_agent.services.prompt_catalog import get_prompt_catalog
 
 
 RouteName = Literal["stock", "rag", "user", "portfolio", "investment"]
@@ -69,9 +71,25 @@ class LangGraphSupervisor:
                 "conversation_context_chars": len(conversation_context or ""),
             },
         ) as span:
-            final_state = self.graph.invoke(state)
-            result = final_state["result"]
-            route = final_state.get("route")
+            timer = get_metrics_service().start_request(question=question, user_id=user_id)
+            try:
+                final_state = self.graph.invoke(state)
+                result = final_state["result"]
+                route = final_state.get("route")
+                timer.finish(
+                    agent=result.get("agent", "Agent"),
+                    route=route,
+                    success=True,
+                    metadata={"source_count": len(result.get("sources", []))},
+                )
+            except Exception as exc:
+                timer.finish(
+                    agent="Unknown",
+                    route=None,
+                    success=False,
+                    error=str(exc),
+                )
+                raise
             if span is not None:
                 try:
                     span.update(
@@ -231,26 +249,21 @@ class LangGraphSupervisor:
             "analyze my portfolio",
         )
 
-        prompt = "\n\n".join(
-            [
-                "Create an educational investment research summary.",
-                f"Conversation context:\n{state.get('conversation_context', '')}",
-                f"User question: {state['question']}",
-                f"Stock data:\n{stock_result.answer}",
-                f"User context:\n{user_result.answer}",
-                f"Portfolio context:\n{portfolio_result.answer}",
-                (
-                    "Return: direct summary, positives, risks, portfolio fit, "
-                    "next research steps, and disclaimer."
-                ),
-            ]
+        prompt_template = get_prompt_catalog().get("investment_research_summary")
+        prompt = prompt_template.render(
+            conversation_context=state.get("conversation_context", ""),
+            question=state["question"],
+            stock_answer=stock_result.answer,
+            user_answer=user_result.answer,
+            portfolio_answer=portfolio_result.answer,
         )
         generated = self.bedrock_service.generate_text(
             prompt,
-            system_prompt=(
-                "You are a financial research assistant. Do not provide guaranteed "
-                "financial advice. Be clear, balanced, and include risk."
-            ),
+            system_prompt=prompt_template.system_prompt,
+            prompt_name=prompt_template.name,
+            prompt_version=prompt_template.version,
+            max_tokens=int((prompt_template.metadata or {}).get("max_tokens", 700)),
+            temperature=float((prompt_template.metadata or {}).get("temperature", 0.2)),
         )
         if generated.startswith("Bedrock generation unavailable"):
             answer = "\n\n".join(
@@ -278,6 +291,10 @@ class LangGraphSupervisor:
                 "stock": stock_result.data,
                 "user": user_result.data,
                 "portfolio": portfolio_result.data,
+                "prompt": {
+                    "name": prompt_template.name,
+                    "version": prompt_template.version,
+                },
             },
         ).model_dump()
         return {**state, "result": result}

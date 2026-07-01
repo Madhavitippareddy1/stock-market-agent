@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from time import perf_counter
 from typing import Any
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from stock_market_agent.config import get_settings
+from stock_market_agent.services.metrics import estimate_tokens, get_metrics_service
 
 
 class BedrockService:
@@ -25,9 +27,13 @@ class BedrockService:
         prompt: str,
         *,
         system_prompt: str | None = None,
+        prompt_name: str | None = None,
+        prompt_version: str | None = None,
         max_tokens: int = 700,
         temperature: float = 0.2,
     ) -> str:
+        started_at = perf_counter()
+        input_tokens = estimate_tokens(prompt) + estimate_tokens(system_prompt)
         messages = [{"role": "user", "content": [{"text": prompt}]}]
         kwargs: dict[str, Any] = {
             "modelId": self.settings.bedrock_chat_model_id,
@@ -43,13 +49,40 @@ class BedrockService:
         try:
             response = self.client.converse(**kwargs)
         except (BotoCoreError, ClientError, Exception) as exc:
+            get_metrics_service().record_llm_call(
+                provider="bedrock",
+                model_id=self.settings.bedrock_chat_model_id,
+                prompt_name=prompt_name,
+                prompt_version=prompt_version,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                latency_ms=(perf_counter() - started_at) * 1000,
+                success=False,
+                error=str(exc),
+            )
             return f"Bedrock generation unavailable: {exc}"
 
         content = response.get("output", {}).get("message", {}).get("content", [])
         text_parts = [item.get("text", "") for item in content if isinstance(item, dict)]
-        return "\n".join(part for part in text_parts if part).strip()
+        answer = "\n".join(part for part in text_parts if part).strip()
+        usage = response.get("usage", {})
+        output_tokens = int(usage.get("outputTokens") or estimate_tokens(answer))
+        measured_input_tokens = int(usage.get("inputTokens") or input_tokens)
+        get_metrics_service().record_llm_call(
+            provider="bedrock",
+            model_id=self.settings.bedrock_chat_model_id,
+            prompt_name=prompt_name,
+            prompt_version=prompt_version,
+            input_tokens=measured_input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=(perf_counter() - started_at) * 1000,
+            success=True,
+        )
+        return answer
 
     def embed_text(self, text: str) -> list[float]:
+        started_at = perf_counter()
+        input_tokens = estimate_tokens(text)
         body = {
             "inputText": text,
             "dimensions": 1024,
@@ -64,10 +97,31 @@ class BedrockService:
                 accept="application/json",
             )
             payload = json.loads(response["body"].read())
-        except (BotoCoreError, ClientError, Exception):
+        except (BotoCoreError, ClientError, Exception) as exc:
+            get_metrics_service().record_llm_call(
+                provider="bedrock",
+                model_id=self.settings.bedrock_embedding_model_id,
+                prompt_name="embedding",
+                prompt_version=None,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                latency_ms=(perf_counter() - started_at) * 1000,
+                success=False,
+                error=str(exc),
+            )
             return []
 
         embedding = payload.get("embedding")
         if isinstance(embedding, list):
+            get_metrics_service().record_llm_call(
+                provider="bedrock",
+                model_id=self.settings.bedrock_embedding_model_id,
+                prompt_name="embedding",
+                prompt_version=None,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                latency_ms=(perf_counter() - started_at) * 1000,
+                success=True,
+            )
             return [float(value) for value in embedding]
         return []

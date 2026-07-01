@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY app.py main.py ./
 COPY src ./src
+COPY data ./data
 
 RUN pip install --no-cache-dir .
 

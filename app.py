@@ -12,7 +12,9 @@ from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.graphs.langgraph_supervisor import LangGraphSupervisor
 from stock_market_agent.config import get_settings
 from stock_market_agent.services.chat_history import ChatHistoryService
+from stock_market_agent.services.metrics import get_metrics_service
 from stock_market_agent.services.mcp_client import McpClient
+from stock_market_agent.services.prompt_catalog import get_prompt_catalog
 
 
 TOP_10_STOCKS = ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "AVGO", "TSLA", "COST", "NFLX"]
@@ -1089,6 +1091,90 @@ def render_ragas_scores(result: dict[str, Any]) -> None:
         st.json(ragas)
 
 
+def render_observability_dashboard() -> None:
+    st.subheader("Observability dashboard")
+    st.caption(
+        "Live app-level metrics from local JSONL telemetry plus Langfuse traces for LLM calls."
+    )
+    summary = get_metrics_service().dashboard_summary()
+    metric_cols = st.columns(6)
+    metric_cols[0].metric("Requests", summary["request_count"])
+    metric_cols[1].metric("Error rate", f"{summary['error_rate'] * 100:.1f}%")
+    metric_cols[2].metric("Avg latency", f"{summary['avg_latency_ms']:.0f} ms")
+    metric_cols[3].metric("p50 / p95", f"{summary['p50_latency_ms']:.0f}/{summary['p95_latency_ms']:.0f} ms")
+    metric_cols[4].metric("Tokens", f"{summary['total_tokens']:,}")
+    metric_cols[5].metric("Avg cost/request", f"${summary['avg_cost_per_request']:.6f}")
+
+    events = summary.get("events", [])
+    if not events:
+        st.info("No telemetry events yet. Ask a chatbot or RAG question to populate this dashboard.")
+    else:
+        events_df = pd.DataFrame(events)
+        request_df = events_df[events_df["event_type"] == "request"].copy()
+        llm_df = events_df[events_df["event_type"] == "llm_call"].copy()
+
+        if not request_df.empty:
+            st.markdown("### Request volume and latency")
+            request_df["timestamp"] = pd.to_datetime(request_df["timestamp"], errors="coerce")
+            st.line_chart(
+                request_df.set_index("timestamp")["latency_ms"],
+                width="stretch",
+            )
+            st.dataframe(
+                request_df[
+                    [
+                        "timestamp",
+                        "agent",
+                        "route",
+                        "latency_ms",
+                        "success",
+                        "error",
+                    ]
+                ].tail(25),
+                width="stretch",
+            )
+
+        if not llm_df.empty:
+            st.markdown("### LLM usage, latency, and cost")
+            st.bar_chart(
+                llm_df[["total_tokens", "cost_usd", "latency_ms"]],
+                width="stretch",
+            )
+            st.dataframe(
+                llm_df[
+                    [
+                        "timestamp",
+                        "provider",
+                        "model_id",
+                        "prompt_name",
+                        "prompt_version",
+                        "total_tokens",
+                        "latency_ms",
+                        "cost_usd",
+                        "success",
+                    ]
+                ].tail(25),
+                width="stretch",
+            )
+
+    st.markdown("### Langfuse / LLM monitoring")
+    st.write(
+        "Langfuse is enabled in AWS ECS. It captures conversation traces, selected agent, "
+        "prompt inputs, outputs, RAGAS scores, and source-count scores."
+    )
+
+    st.markdown("### Prompt catalogue and versioning")
+    prompt_versions = get_prompt_catalog().active_versions()
+    st.dataframe(
+        pd.DataFrame(
+            [{"Prompt": name, "Active version": version} for name, version in prompt_versions.items()]
+        ),
+        width="stretch",
+    )
+    with st.expander("Prompt catalogue file"):
+        st.code(settings.prompt_catalog_path)
+
+
 st.set_page_config(page_title="Stock Market Agent", layout="wide")
 apply_app_styles()
 
@@ -1200,8 +1286,14 @@ with st.sidebar:
     with st.expander("Full chat history", expanded=False):
         render_chat_history(session_id)
 
-tab_research, tab_portfolio, tab_watchlist, tab_settings = st.tabs(
-    ["🔎 Agent Research", "📊 My Portfolio", "⭐ My Watchlist", "⚙️ Settings"]
+tab_research, tab_portfolio, tab_watchlist, tab_observability, tab_settings = st.tabs(
+    [
+        "🔎 Agent Research",
+        "📊 My Portfolio",
+        "⭐ My Watchlist",
+        "📈 Observability",
+        "⚙️ Settings",
+    ]
 )
 
 with tab_research:
@@ -1515,6 +1607,9 @@ with tab_watchlist:
         "watchlist",
         "Run a Watchlist question to see the exact Supervisor → User Agent → MCP flow.",
     )
+
+with tab_observability:
+    render_observability_dashboard()
 
 with tab_settings:
     st.subheader("Configuration")

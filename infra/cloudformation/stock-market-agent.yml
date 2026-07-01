@@ -77,6 +77,15 @@ Parameters:
   RagasScorePrefix:
     Type: String
     Default: ragas
+  ObservabilityMetricsPath:
+    Type: String
+    Default: data/observability_metrics.jsonl
+  PromptCatalogPath:
+    Type: String
+    Default: data/prompts/prompts.json
+  ActivePromptEnvironment:
+    Type: String
+    Default: production
   GitHubOwner:
     Type: String
     Default: ""
@@ -470,6 +479,12 @@ Resources:
               Value: !Ref RagasEnabled
             - Name: RAGAS_SCORE_PREFIX
               Value: !Ref RagasScorePrefix
+            - Name: OBSERVABILITY_METRICS_PATH
+              Value: !Ref ObservabilityMetricsPath
+            - Name: PROMPT_CATALOG_PATH
+              Value: !Ref PromptCatalogPath
+            - Name: ACTIVE_PROMPT_ENVIRONMENT
+              Value: !Ref ActivePromptEnvironment
             - Name: DATABASE_HOST
               Value: !GetAtt DatabaseInstance.Endpoint.Address
             - Name: DATABASE_PORT
