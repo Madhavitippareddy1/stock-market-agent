@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -14,8 +14,12 @@ from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.config import get_settings
 from stock_market_agent.graphs.langgraph_supervisor import LangGraphSupervisor
 from stock_market_agent.services.chat_history import ChatHistoryService
+from stock_market_agent.services.local_market_data import get_quote
 from stock_market_agent.services.mcp_client import McpClient
 from stock_market_agent.services.metrics import get_metrics_service
+
+
+TOP_10_STOCKS = ["NVDA", "GOOGL", "AAPL", "MSFT", "AMZN", "META", "AVGO", "TSLA", "COST", "NFLX"]
 
 
 class ResearchRequest(BaseModel):
@@ -176,6 +180,19 @@ def users() -> dict[str, Any]:
 @app.get("/watchlist/{user_id}")
 def watchlist(user_id: str) -> dict[str, Any]:
     return get_services().mcp_client.call_tool("get_user_watchlist", {"user_id": user_id})
+
+
+@app.get("/stock/quotes")
+def stock_quotes(tickers: list[str] = Query(default=[])) -> dict[str, Any]:
+    clean_tickers = [ticker.strip().upper() for ticker in tickers if ticker.strip()]
+    quotes = [get_quote(ticker).__dict__ for ticker in clean_tickers]
+    return {"tickers": clean_tickers, "quotes": quotes, "sources": ["Yahoo Finance via yfinance"]}
+
+
+@app.get("/stock/top10")
+def stock_top10() -> dict[str, Any]:
+    quotes = [get_quote(ticker).__dict__ for ticker in TOP_10_STOCKS]
+    return {"tickers": TOP_10_STOCKS, "quotes": quotes, "sources": ["Yahoo Finance via yfinance"]}
 
 
 @app.get("/chat/{session_id}")

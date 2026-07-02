@@ -82,11 +82,17 @@ class LangGraphSupervisor:
                 final_state = self.graph.invoke(state)
                 result = final_state["result"]
                 route = final_state.get("route")
+                result_data = result.get("data") or {}
+                request_metadata: dict[str, Any] = {
+                    "source_count": len(result.get("sources", [])),
+                }
+                if result_data.get("ragas"):
+                    request_metadata["ragas"] = result_data["ragas"]
                 timer.finish(
                     agent=result.get("agent", "Agent"),
                     route=route,
                     success=True,
-                    metadata={"source_count": len(result.get("sources", []))},
+                    metadata=request_metadata,
                 )
             except Exception as exc:
                 timer.finish(

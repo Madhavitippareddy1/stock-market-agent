@@ -251,6 +251,123 @@ def render_user_summary(user: dict[str, Any] | None, user_id: str) -> None:
     st.caption(user.get("investment_goal", ""))
 
 
+def fetch_quotes(tickers: list[str]) -> list[dict[str, Any]]:
+    if not tickers:
+        return []
+    response = requests.get(
+        f"{API_BASE_URL}/stock/quotes",
+        params=[("tickers", ticker) for ticker in tickers],
+        timeout=120,
+    )
+    response.raise_for_status()
+    return response.json().get("quotes", [])
+
+
+def render_quote_table(quotes: list[dict[str, Any]], title: str) -> None:
+    st.markdown(f"### {title}")
+    if not quotes:
+        st.info("No stock quote data returned yet.")
+        return
+    df = pd.DataFrame(quotes)
+    display_cols = [
+        col
+        for col in [
+            "ticker",
+            "company_name",
+            "price",
+            "previous_close",
+            "currency",
+            "market_cap",
+            "sector",
+            "industry",
+        ]
+        if col in df.columns
+    ]
+    if "price" in df.columns and "previous_close" in df.columns:
+        df["daily_change_pct"] = (
+            (pd.to_numeric(df["price"], errors="coerce") - pd.to_numeric(df["previous_close"], errors="coerce"))
+            / pd.to_numeric(df["previous_close"], errors="coerce")
+            * 100
+        )
+        display_cols.append("daily_change_pct")
+    st.dataframe(df[display_cols], width="stretch", hide_index=True)
+    if {"ticker", "price"}.issubset(df.columns):
+        price_chart = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X("ticker:N", title="Ticker"),
+                y=alt.Y("price:Q", title="Live price", scale=alt.Scale(zero=False)),
+                color=alt.Color("sector:N", title="Sector") if "sector" in df.columns else alt.value("#ff4b4b"),
+                tooltip=display_cols,
+            )
+            .properties(height=330)
+        )
+        st.altair_chart(price_chart, width="stretch")
+
+
+def build_portfolio_recommendations(
+    portfolio_data: dict[str, Any],
+    selected_user: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    holdings = portfolio_data.get("holdings") or []
+    if not holdings:
+        return [
+            {
+                "priority": "info",
+                "recommendation": "Run portfolio analysis to generate recommendations.",
+                "reason": "No structured holdings were returned yet.",
+            }
+        ]
+
+    total_value = float(portfolio_data.get("total_value") or 0)
+    rows = []
+    for holding in holdings:
+        market_value = float(holding.get("market_value") or 0)
+        allocation = (market_value / total_value * 100) if total_value else 0
+        rows.append({**holding, "allocation_percent": allocation})
+
+    recommendations: list[dict[str, str]] = []
+    concentrated = sorted(rows, key=lambda row: row["allocation_percent"], reverse=True)[:3]
+    if concentrated and concentrated[0]["allocation_percent"] >= 30:
+        recommendations.append(
+            {
+                "priority": "High",
+                "recommendation": f"Review concentration in {concentrated[0]['ticker']}.",
+                "reason": f"{concentrated[0]['ticker']} is {concentrated[0]['allocation_percent']:.1f}% of the portfolio, which increases single-stock risk.",
+            }
+        )
+
+    losers = sorted(rows, key=lambda row: float(row.get("gain_loss") or 0))[:3]
+    if losers and float(losers[0].get("gain_loss") or 0) < 0:
+        recommendations.append(
+            {
+                "priority": "Medium",
+                "recommendation": f"Review loss-making position {losers[0]['ticker']} before adding more.",
+                "reason": f"{losers[0]['ticker']} has current unrealized loss of ${float(losers[0].get('gain_loss') or 0):,.2f}.",
+            }
+        )
+
+    risk_profile = (selected_user or {}).get("risk_profile", "balanced")
+    sector = (selected_user or {}).get("sector", "diversified sectors")
+    recommendations.append(
+        {
+            "priority": "Strategy",
+            "recommendation": f"Align new ideas with the user's {risk_profile} profile and {sector} interest.",
+            "reason": "Recommendations should match the selected user's investment goal instead of using one default portfolio.",
+        }
+    )
+
+    recommendations.append(
+        {
+            "priority": "Diversify",
+            "recommendation": "Compare at least 2-3 sectors before investing new capital.",
+            "reason": "This reduces dependence on a single market theme and improves risk balance.",
+        }
+    )
+    return recommendations
+
+
 def render_sidebar() -> str:
     with st.sidebar:
         st.header("Stock Chatbot")
@@ -434,6 +551,25 @@ def render_portfolio_tab(session_id: str) -> None:
         st.markdown("### Risk alerts")
         risk_df = pd.DataFrame(risk_details)
         st.dataframe(risk_df, width="stretch", hide_index=True)
+        risk_counts = risk_df.groupby("severity").size().reset_index(name="alerts")
+        risk_chart = (
+            alt.Chart(risk_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("severity:N", title="Severity"),
+                y=alt.Y("alerts:Q", title="Alert count"),
+                color=alt.Color("severity:N", legend=None),
+                tooltip=["severity", "alerts"],
+            )
+            .properties(height=260)
+        )
+        st.altair_chart(risk_chart, width="stretch")
+
+    if portfolio_data:
+        st.markdown("### Recommendations")
+        recs = build_portfolio_recommendations(portfolio_data, selected_user)
+        st.dataframe(pd.DataFrame(recs), width="stretch", hide_index=True)
+        render_disclaimer()
 
 
 def render_watchlist_tab(session_id: str) -> None:
@@ -458,15 +594,40 @@ def render_watchlist_tab(session_id: str) -> None:
 
     watchlist_result = st.session_state.get("watchlist_result")
     if watchlist_result:
-        st.markdown("### Watchlist stocks")
+        st.markdown("### User interested stocks")
         tickers = watchlist_result.get("watchlist", [])
         if tickers:
             ticker_df = pd.DataFrame(
                 [{"position": index + 1, "ticker": ticker} for index, ticker in enumerate(tickers)]
             )
             st.dataframe(ticker_df, width="stretch", hide_index=True)
-            st.bar_chart(ticker_df.set_index("ticker")["position"], width="stretch")
+            refresh_watchlist_quotes = st.button(
+                "Refresh selected user's live stock prices",
+                key="refresh_user_watchlist_quotes",
+                width="stretch",
+            )
+            watchlist_quotes_key = f"watchlist_quotes_{watchlist_user}"
+            if refresh_watchlist_quotes or watchlist_quotes_key not in st.session_state:
+                with st.spinner("Fetching live prices for interested stocks..."):
+                    try:
+                        st.session_state[watchlist_quotes_key] = fetch_quotes(tickers)
+                    except Exception as exc:
+                        st.error(f"Live watchlist quote fetch failed: {exc}")
+                        st.session_state[watchlist_quotes_key] = []
+            render_quote_table(st.session_state.get(watchlist_quotes_key, []), "Live prices for interested stocks")
         st.caption(watchlist_result.get("answer", ""))
+
+    st.markdown("### Live Top 10 stocks")
+    refresh_top10 = st.button("Refresh live Top 10 stocks", key="refresh_top10_quotes", type="primary")
+    if refresh_top10 or "top10_quotes" not in st.session_state:
+        with st.spinner("Fetching live Top 10 stocks..."):
+            try:
+                top10 = api_get("/stock/top10")
+                st.session_state["top10_quotes"] = top10.get("quotes", [])
+            except Exception as exc:
+                st.error(f"Top 10 refresh failed: {exc}")
+                st.session_state["top10_quotes"] = []
+    render_quote_table(st.session_state.get("top10_quotes", []), "Top 10 live stock prices")
 
     users = (st.session_state.get("users_result") or {}).get("users", [])
     if users:
@@ -569,6 +730,21 @@ def render_observability_tab() -> None:
                             "comment": score.get("comment"),
                         }
                     )
+        for result_key in ["research_result", "chatbot_result"]:
+            result = st.session_state.get(result_key) or {}
+            ragas = (result.get("data") or {}).get("ragas")
+            if isinstance(ragas, dict):
+                for score in ragas.get("scores", []):
+                    ragas_rows.append(
+                        {
+                            "timestamp": "current session",
+                            "question": result.get("answer", "")[:80],
+                            "score": score.get("name"),
+                            "value": score.get("value"),
+                            "passed": ragas.get("passed"),
+                            "comment": score.get("comment"),
+                        }
+                    )
         st.markdown("### RAGAS evaluation")
         if ragas_rows:
             ragas_df = pd.DataFrame(ragas_rows)
@@ -586,7 +762,11 @@ def render_observability_tab() -> None:
             )
             st.altair_chart(ragas_chart, width="stretch")
         else:
-            st.info("No RAGAS scores found yet. Run a RAG report question/upload to generate RAGAS metrics.")
+            st.warning(
+                "No RAGAS scores found yet. RAGAS is generated only for RAG/report questions. "
+                "Go to Agent Research, upload a PDF/TXT/MD report or ask for a stored financial report, "
+                "then refresh this Observability tab."
+            )
 
     with st.expander("Raw observability JSON", expanded=False):
         st.json(summary)
