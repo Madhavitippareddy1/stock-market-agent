@@ -87,12 +87,12 @@ def fetch_investment_users(client: McpClient) -> list[dict]:
 
 def user_option_label(user_id: str, users: list[dict]) -> str:
     if user_id == "demo-user":
-        return "Demo User â€” demo-user"
+        return "Demo User - demo-user"
     user = next((item for item in users if item["user_id"] == user_id), None)
     if not user:
         return user_id
     return (
-        f"{user.get('display_name', user_id)} â€” {user_id} "
+        f"{user.get('display_name', user_id)} - {user_id} "
         f"({user.get('sector', 'sector not set')})"
     )
 
@@ -676,7 +676,7 @@ def render_status_cards() -> None:
             """
             <div class="mini-card">
               <div class="mini-card-title">Agents</div>
-              <div class="mini-card-value">Stock Â· RAG Â· User Â· Portfolio</div>
+              <div class="mini-card-value">Stock - RAG - User - Portfolio</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -696,7 +696,7 @@ def render_status_cards() -> None:
             """
             <div class="mini-card">
               <div class="mini-card-title">Deployment</div>
-              <div class="mini-card-value">AWS ready Â· ECS Â· RDS</div>
+              <div class="mini-card-value">AWS ready - ECS - RDS</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1164,10 +1164,10 @@ def show_agent_routing_help() -> None:
 
         **Typical flow examples**
 
-        - Stock price: Chatbot â†’ LangGraph Supervisor â†’ Stock Agent â†’ MCP stock tool â†’ Yahoo Finance.
-        - Portfolio risk: Chatbot â†’ LangGraph Supervisor â†’ Portfolio Agent â†’ MCP portfolio tool â†’ SQLite + Yahoo Finance.
-        - Uploaded report: Chatbot â†’ LangGraph Supervisor â†’ RAG Agent â†’ extract text â†’ chunk â†’ retrieve â†’ answer.
-        - Investment question: Chatbot â†’ LangGraph Supervisor â†’ Investment Agent â†’ Stock + User + Portfolio Agents â†’ Bedrock summary.
+        - Stock price: Chatbot -> LangGraph Supervisor -> Stock Agent -> MCP stock tool -> Yahoo Finance.
+        - Portfolio risk: Chatbot -> LangGraph Supervisor -> Portfolio Agent -> MCP portfolio tool -> SQLite + Yahoo Finance.
+        - Uploaded report: Chatbot -> LangGraph Supervisor -> RAG Agent -> extract text -> chunk -> retrieve -> answer.
+        - Investment question: Chatbot -> LangGraph Supervisor -> Investment Agent -> Stock + User + Portfolio Agents -> Bedrock summary.
         """
     )
 
@@ -1336,7 +1336,7 @@ supervisor = LangGraphSupervisor(
 )
 
 with st.sidebar:
-    st.header("ðŸ’¬ Stock Chatbot")
+    st.header("Stock Chatbot")
     session_id = st.text_input("Chat / User ID", value="demo-user", key="chat_session")
     st.caption("Past messages are saved and reused as context.")
 
@@ -1425,11 +1425,11 @@ with st.sidebar:
 
 tab_research, tab_portfolio, tab_watchlist, tab_observability, tab_settings = st.tabs(
     [
-        "ðŸ”Ž Agent Research",
-        "ðŸ“Š My Portfolio",
-        "â­ My Watchlist",
-        "ðŸ“ˆ Observability",
-        "âš™ï¸ Settings",
+        "Agent Research",
+        "My Portfolio",
+        "My Watchlist",
+        "Observability",
+        "Settings",
     ]
 )
 
@@ -1476,7 +1476,7 @@ with tab_research:
 
     render_saved_tab_agent_trace(
         "research",
-        "Run an Agent Research question to see the exact Supervisor â†’ Agent â†’ Tool flow.",
+        "Run an Agent Research question to see the exact Supervisor -> Agent -> Tool flow.",
     )
 
 with tab_portfolio:
@@ -1603,7 +1603,7 @@ with tab_portfolio:
                 if "No major" in alert:
                     st.success(alert)
                 else:
-                    st.warning(f"âš ï¸ {alert}")
+                    st.warning(f"Warning: {alert}")
         elif False:
             st.info("No portfolio risk alerts returned.")
 
@@ -1613,7 +1613,7 @@ with tab_portfolio:
 
     render_saved_tab_agent_trace(
         "portfolio",
-        "Click Analyze portfolio to see the exact Supervisor â†’ Portfolio Agent â†’ MCP flow.",
+        "Click Analyze portfolio to see the exact Supervisor -> Portfolio Agent -> MCP flow.",
     )
 
 with tab_watchlist:
@@ -1745,7 +1745,7 @@ with tab_watchlist:
 
     render_saved_tab_agent_trace(
         "watchlist",
-        "Run a Watchlist question to see the exact Supervisor â†’ User Agent â†’ MCP flow.",
+        "Run a Watchlist question to see the exact Supervisor -> User Agent -> MCP flow.",
     )
 
 with tab_observability:
