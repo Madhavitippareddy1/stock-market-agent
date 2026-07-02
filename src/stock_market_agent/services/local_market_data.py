@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import yfinance as yf
@@ -115,18 +117,111 @@ def build_seed_users() -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[s
 
 
 SEED_USERS, SEED_PORTFOLIOS = build_seed_users()
+CUSTOM_USERS_PATH = Path("data/custom_users.json")
+
+
+def _normalize_tickers(tickers: list[str] | str | None) -> list[str]:
+    if tickers is None:
+        return []
+    if isinstance(tickers, str):
+        raw_items = re.split(r"[\s,]+", tickers)
+    else:
+        raw_items = tickers
+    normalized: list[str] = []
+    for item in raw_items:
+        ticker = str(item).strip().upper()
+        if ticker and re.fullmatch(r"[A-Z.]{1,6}", ticker) and ticker not in normalized:
+            normalized.append(ticker)
+    return normalized[:10]
+
+
+def _load_custom_store() -> dict[str, Any]:
+    if not CUSTOM_USERS_PATH.exists():
+        return {"users": {}, "portfolios": {}}
+    try:
+        with CUSTOM_USERS_PATH.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except Exception:
+        return {"users": {}, "portfolios": {}}
+    return {
+        "users": data.get("users", {}),
+        "portfolios": data.get("portfolios", {}),
+    }
+
+
+def _save_custom_store(store: dict[str, Any]) -> None:
+    CUSTOM_USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with CUSTOM_USERS_PATH.open("w", encoding="utf-8") as file:
+        json.dump(store, file, indent=2, sort_keys=True)
+
+
+def list_custom_users() -> list[dict[str, Any]]:
+    store = _load_custom_store()
+    return [store["users"][user_id] for user_id in sorted(store["users"])]
+
+
+def create_investment_user(
+    *,
+    display_name: str,
+    sector: str,
+    risk_profile: str,
+    investment_goal: str,
+    watchlist: list[str] | str,
+) -> dict[str, Any]:
+    clean_name = display_name.strip() or "New Investor"
+    clean_sector = sector.strip().lower() or "diversified"
+    clean_risk = risk_profile.strip().lower() or "balanced"
+    clean_goal = investment_goal.strip() or "long-term growth"
+    clean_watchlist = _normalize_tickers(watchlist) or ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+    slug = re.sub(r"[^a-z0-9]+", "-", clean_name.lower()).strip("-") or "new-user"
+
+    store = _load_custom_store()
+    users = store["users"]
+    portfolios = store["portfolios"]
+    base_user_id = f"custom-{slug}"
+    user_id = base_user_id
+    suffix = 1
+    while user_id in users or user_id in SEED_USERS:
+        suffix += 1
+        user_id = f"{base_user_id}-{suffix}"
+
+    user = {
+        "user_id": user_id,
+        "display_name": clean_name,
+        "sector": clean_sector,
+        "risk_profile": clean_risk,
+        "investment_goal": clean_goal,
+        "watchlist": clean_watchlist,
+        "source": "streamlit-created",
+    }
+    users[user_id] = user
+    portfolios[user_id] = [
+        {
+            "ticker": ticker,
+            "quantity": 3 + index,
+            "average_buy_price": float(90 + (index * 22)),
+        }
+        for index, ticker in enumerate(clean_watchlist, start=1)
+    ]
+    _save_custom_store(store)
+    return user
 
 
 def list_investment_users() -> list[dict[str, Any]]:
-    return [SEED_USERS[user_id] for user_id in sorted(SEED_USERS) if user_id != "demo-user"]
+    seed_users = [SEED_USERS[user_id] for user_id in sorted(SEED_USERS) if user_id != "demo-user"]
+    return [*seed_users, *list_custom_users()]
 
 
 def get_user_profile(user_id: str) -> dict[str, Any] | None:
-    return SEED_USERS.get(user_id)
+    if user_id in SEED_USERS:
+        return SEED_USERS[user_id]
+    return _load_custom_store()["users"].get(user_id)
 
 
 def get_user_portfolio(user_id: str) -> list[dict[str, Any]]:
-    return SEED_PORTFOLIOS.get(user_id, [])
+    if user_id in SEED_PORTFOLIOS:
+        return SEED_PORTFOLIOS[user_id]
+    return _load_custom_store()["portfolios"].get(user_id, [])
 
 
 def get_quote(ticker: str) -> LocalQuote:

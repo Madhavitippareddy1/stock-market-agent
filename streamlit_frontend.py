@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import html
 from typing import Any
 
 import altair as alt
@@ -110,11 +111,27 @@ def apply_styles() -> None:
             line-height: 1.55;
         }
         .chat-panel {
-            background: #18243a;
+            background: #ffffff;
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 1rem;
             padding: 1rem;
             margin: 0.75rem 0 1rem 0;
+        }
+        .chat-history-card {
+            background: #1d2939;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 0.85rem;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+        }
+        .chat-history-card p {
+            margin-bottom: 0.25rem;
+        }
+        .chat-role {
+            color: #98a2b3;
+            font-size: 0.85rem;
+            font-weight: 800;
+            text-transform: uppercase;
         }
         .flow-card {
             background: #f8fafc;
@@ -226,6 +243,34 @@ def render_chat_history(session_id: str, limit: int = 8) -> None:
                 st.caption(message["created_at"])
 
 
+def render_compact_chat_history(session_id: str, limit: int = 6) -> None:
+    try:
+        history = api_get(f"/chat/{session_id}", limit=limit)
+    except Exception as exc:
+        st.warning(f"Chat history unavailable: {exc}")
+        return
+
+    messages = history.get("messages", [])
+    if not messages:
+        st.caption("No chat history yet.")
+        return
+
+    for message in messages[-limit:]:
+        role = "You" if message.get("role") == "user" else "Assistant"
+        content = str(message.get("content", ""))
+        if len(content) > 260:
+            content = f"{content[:260].rstrip()}..."
+        st.markdown(
+            f"""
+            <div class="chat-history-card">
+                <div class="chat-role">{html.escape(role)}</div>
+                <p>{html.escape(content)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def get_agent_flow(result: dict[str, Any] | None) -> dict[str, Any] | None:
     if not result:
         return None
@@ -330,7 +375,7 @@ def render_user_picker(default_user_id: str, key_prefix: str) -> tuple[str, dict
             default_index = index
             break
     selected_label = st.selectbox(
-        "Select seeded user",
+        "Select user",
         options=options,
         index=default_index,
         key=f"{key_prefix}_user_select",
@@ -344,6 +389,69 @@ def render_user_picker(default_user_id: str, key_prefix: str) -> tuple[str, dict
     if manual_user and manual_user != selected_user.get("user_id"):
         return manual_user, None
     return selected_user.get("user_id", default_user_id), selected_user
+
+
+def render_create_user_form() -> None:
+    with st.expander("Add new portfolio user", expanded=False):
+        st.caption("Create a local investor profile with a watchlist. It will appear in Portfolio and Watchlist selectors.")
+        with st.form("create_portfolio_user_form"):
+            name = st.text_input("User name", placeholder="Example: Priya Sharma")
+            sector = st.selectbox(
+                "Preferred sector",
+                [
+                    "technology",
+                    "consumer defensive",
+                    "healthcare",
+                    "financial services",
+                    "energy",
+                    "communication services",
+                    "consumer cyclical",
+                    "industrials",
+                    "utilities",
+                    "real estate",
+                    "diversified",
+                ],
+            )
+            risk_profile = st.selectbox("Risk profile", ["balanced", "conservative", "moderate", "aggressive"])
+            investment_goal = st.text_input(
+                "Investment goal",
+                value="long-term growth",
+                placeholder="Example: long-term growth with balanced risk",
+            )
+            watchlist_text = st.text_input(
+                "Watchlist tickers",
+                value="AAPL, MSFT, NVDA, AMZN, GOOGL",
+                placeholder="Comma-separated tickers, up to 10",
+            )
+            submitted = st.form_submit_button("Create user", type="primary")
+
+        if submitted:
+            tickers = [ticker.strip().upper() for ticker in watchlist_text.split(",") if ticker.strip()]
+            if not name.strip():
+                st.warning("Please enter a user name.")
+                return
+            with st.spinner("Creating user profile..."):
+                try:
+                    response = api_post(
+                        "/users",
+                        {
+                            "display_name": name,
+                            "sector": sector,
+                            "risk_profile": risk_profile,
+                            "investment_goal": investment_goal,
+                            "watchlist": tickers,
+                        },
+                    )
+                    created_user = response.get("user", {})
+                    st.session_state["users_result"] = None
+                    st.session_state["created_user_id"] = created_user.get("user_id")
+                    st.success(
+                        f"Created {created_user.get('display_name', name)} "
+                        f"({created_user.get('user_id', 'new user')})."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Create user failed: {exc}")
 
 
 def render_user_summary(user: dict[str, Any] | None, user_id: str) -> None:
@@ -476,14 +584,14 @@ def build_portfolio_recommendations(
 
 
 def render_sidebar() -> str:
+    chat_session_id = "stock-chat"
     with st.sidebar:
         st.header("Stock Chatbot")
-        session_id = st.text_input("Chat / User ID", value="demo-user", key="chat_session")
-        st.caption("Ask questions here. Past messages are saved and reused as context.")
+        st.caption("Ask stock questions, compare companies, or request portfolio/risk help.")
 
         if st.button("Clear chat", key="clear_chat_button", width="stretch"):
             try:
-                api_delete(f"/chat/{session_id}")
+                api_delete(f"/chat/{chat_session_id}")
                 st.session_state["chatbot_result"] = None
                 st.session_state["last_agent_call"] = "None"
                 st.session_state["last_agent_flow"] = None
@@ -493,19 +601,17 @@ def render_sidebar() -> str:
                 st.error(f"Clear failed: {exc}")
 
         try:
-            messages = api_get(f"/chat/{session_id}", limit=50).get("messages", [])
+            messages = api_get(f"/chat/{chat_session_id}", limit=50).get("messages", [])
         except Exception:
             messages = []
-        metric_col, agent_col = st.columns(2)
-        metric_col.metric("Messages", len(messages))
-        agent_col.metric("Last agent", st.session_state.get("last_agent_call", "None"))
+        st.caption(f"{len(messages)} saved messages | Last agent: {st.session_state.get('last_agent_call', 'None')}")
 
         st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
         prompt = st.text_area(
-            "Chat question",
-            placeholder="Example: compare Apple and Meta, or analyze my portfolio",
+            "Chat",
+            placeholder="Example: compare Apple and Meta, Amazon 5-year stock report, or analyze risk",
             key="sidebar_prompt",
-            height=95,
+            height=110,
         )
         if st.button("Send", key="sidebar_send_button", type="primary", width="stretch"):
             if not prompt.strip():
@@ -513,7 +619,7 @@ def render_sidebar() -> str:
             else:
                 with st.spinner("Calling supervisor agent..."):
                     try:
-                        result = api_post("/research", {"question": prompt, "user_id": session_id})
+                        result = api_post("/research", {"question": prompt, "user_id": chat_session_id})
                         st.session_state["chatbot_result"] = result
                         st.session_state["last_agent_call"] = result.get("agent", "Agent")
                         st.session_state["last_agent_flow"] = get_agent_flow(result)
@@ -523,26 +629,15 @@ def render_sidebar() -> str:
         st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.get("chatbot_result"):
-            with st.expander("Latest chatbot answer", expanded=True):
+            with st.expander("Latest answer", expanded=True):
                 render_compact_agent_result(st.session_state["chatbot_result"])
-            with st.expander("Supervisor and sub-agent call", expanded=True):
+            with st.expander("Agent flow", expanded=False):
                 render_agent_flow(st.session_state["chatbot_result"], title="Flow for latest chat")
 
-        st.markdown("### Recent chat")
-        render_chat_history(session_id, limit=4)
+        st.markdown("### Chat history")
+        render_compact_chat_history(chat_session_id, limit=6)
 
-        with st.expander("Full chat history", expanded=False):
-            render_chat_history(session_id, limit=30)
-
-        with st.expander("Backend", expanded=False):
-            st.code(API_BASE_URL)
-            if st.button("Health check", key="sidebar_health_button", width="stretch"):
-                try:
-                    st.success(api_get("/health"))
-                except Exception as exc:
-                    st.error(f"API is not reachable: {exc}")
-
-    return session_id
+    return "demo-user"
 
 
 def render_research_tab(session_id: str) -> None:
@@ -609,7 +704,9 @@ def render_research_tab(session_id: str) -> None:
 def render_portfolio_tab(session_id: str) -> None:
     st.markdown("### Portfolio dashboard")
     st.caption("Review user holdings, risk concentration, gain/loss, and educational recommendations.")
-    portfolio_user, selected_user = render_user_picker(session_id, "portfolio")
+    render_create_user_form()
+    default_portfolio_user = st.session_state.get("created_user_id") or session_id
+    portfolio_user, selected_user = render_user_picker(default_portfolio_user, "portfolio")
     render_user_summary(selected_user, portfolio_user)
 
     action_col, note_col = st.columns([1, 3])
@@ -764,7 +861,8 @@ def render_portfolio_tab(session_id: str) -> None:
 
 def render_watchlist_tab(session_id: str) -> None:
     st.markdown("### My Watchlist")
-    watchlist_user, selected_user = render_user_picker(session_id, "watchlist")
+    default_watchlist_user = st.session_state.get("created_user_id") or session_id
+    watchlist_user, selected_user = render_user_picker(default_watchlist_user, "watchlist")
     render_user_summary(selected_user, watchlist_user)
 
     if st.button("Show selected user's watchlist", key="show_watchlist_button", type="primary", width="stretch"):

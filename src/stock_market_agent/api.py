@@ -14,7 +14,12 @@ from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.config import get_settings
 from stock_market_agent.graphs.langgraph_supervisor import LangGraphSupervisor
 from stock_market_agent.services.chat_history import ChatHistoryService
-from stock_market_agent.services.local_market_data import get_quote
+from stock_market_agent.services.local_market_data import (
+    create_investment_user,
+    get_quote,
+    list_investment_users,
+    user_context as local_user_context,
+)
 from stock_market_agent.services.mcp_client import McpClient
 from stock_market_agent.services.metrics import get_metrics_service
 
@@ -36,6 +41,14 @@ class PortfolioRequest(BaseModel):
 class UserContextRequest(BaseModel):
     user_id: str = "demo-user"
     question: str = "show my profile"
+
+
+class CreateUserRequest(BaseModel):
+    display_name: str
+    sector: str = "diversified"
+    risk_profile: str = "balanced"
+    investment_goal: str = "long-term growth"
+    watchlist: list[str] = Field(default_factory=list)
 
 
 class ChatMessageRequest(BaseModel):
@@ -174,12 +187,64 @@ def user_context(request: UserContextRequest) -> dict[str, Any]:
 @app.get("/users")
 def users() -> dict[str, Any]:
     result = get_services().mcp_client.call_tool("list_investment_users", {})
+    answer = str(result.get("answer", "")).lower()
+    if "mcp tool" in answer and any(
+        marker in answer for marker in ["unavailable", "timed out", "not configured", "returned no content"]
+    ):
+        return {"users": list_investment_users(), "sources": ["Local fallback users"]}
+    local_users = list_investment_users()
+    existing_ids = {user.get("user_id") for user in result.get("users", [])}
+    custom_users = [
+        user
+        for user in local_users
+        if user.get("source") == "streamlit-created" and user.get("user_id") not in existing_ids
+    ]
+    if custom_users:
+        result["users"] = [*(result.get("users") or []), *custom_users]
     return result
+
+
+@app.post("/users")
+def create_user(request: CreateUserRequest) -> dict[str, Any]:
+    user = create_investment_user(
+        display_name=request.display_name,
+        sector=request.sector,
+        risk_profile=request.risk_profile,
+        investment_goal=request.investment_goal,
+        watchlist=request.watchlist,
+    )
+    return {
+        "user": user,
+        "profile": local_user_context(user["user_id"], "show my profile"),
+        "sources": ["Local custom user store"],
+    }
 
 
 @app.get("/watchlist/{user_id}")
 def watchlist(user_id: str) -> dict[str, Any]:
-    return get_services().mcp_client.call_tool("get_user_watchlist", {"user_id": user_id})
+    result = get_services().mcp_client.call_tool("get_user_watchlist", {"user_id": user_id})
+    answer = str(result.get("answer", "")).lower()
+    if "mcp tool" in answer and any(
+        marker in answer for marker in ["unavailable", "timed out", "not configured", "returned no content"]
+    ):
+        profile = local_user_context(user_id, "show my watchlist")
+        return {
+            "user_id": user_id,
+            "watchlist": (profile.get("user") or {}).get("watchlist", []),
+            "answer": profile.get("answer", ""),
+            "sources": profile.get("sources", ["Local fallback users"]),
+        }
+    if not result.get("watchlist"):
+        profile = local_user_context(user_id, "show my watchlist")
+        local_watchlist = (profile.get("user") or {}).get("watchlist", [])
+        if local_watchlist:
+            return {
+                "user_id": user_id,
+                "watchlist": local_watchlist,
+                "answer": profile.get("answer", ""),
+                "sources": profile.get("sources", ["Local fallback users"]),
+            }
+    return result
 
 
 @app.get("/stock/quotes")

@@ -5,10 +5,13 @@ from stock_market_agent.services.local_market_data import portfolio_analysis
 
 def _is_mcp_error(result: dict) -> bool:
     answer = str(result.get("answer", "")).lower()
-    return "mcp tool" in answer and any(
-        marker in answer
-        for marker in ["unavailable", "timed out", "not configured", "returned no content"]
-    )
+    return (
+        "mcp tool" in answer
+        and any(
+            marker in answer
+            for marker in ["unavailable", "timed out", "not configured", "returned no content"]
+        )
+    ) or "no portfolio holdings found" in answer
 
 
 class PortfolioAgent:
