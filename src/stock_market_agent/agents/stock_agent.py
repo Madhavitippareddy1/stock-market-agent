@@ -138,6 +138,119 @@ def _quote_from_yfinance(ticker: str) -> dict[str, Any]:
     }
 
 
+def _is_five_year_question(question: str) -> bool:
+    normalized = question.lower()
+    return any(
+        phrase in normalized
+        for phrase in ["5 year", "5-year", "five year", "five-year", "5 years", "five years"]
+    )
+
+
+def _format_percent(value: float | None) -> str:
+    if value is None:
+        return "not available"
+    return f"{value:+.2f}%"
+
+
+def _five_year_stock_report(question: str) -> dict[str, Any] | None:
+    tickers = _extract_requested_tickers(question)
+    if not tickers:
+        return None
+
+    sections: list[str] = []
+    history_by_ticker: dict[str, list[dict[str, Any]]] = {}
+    quote_rows: list[dict[str, Any]] = []
+
+    for ticker in tickers:
+        quote = _quote_from_yfinance(ticker)
+        quote_rows.append(quote)
+        currency = quote.get("currency") or "USD"
+        stock = yf.Ticker(ticker)
+        try:
+            history = stock.history(period="5y", interval="1mo", auto_adjust=False)
+        except Exception:
+            history = None
+
+        if history is None or history.empty or "Close" not in history:
+            sections.append(
+                "\n".join(
+                    [
+                        f"{ticker} - {quote.get('company_name') or 'Company name unavailable'}",
+                        f"- Current price: {_money(quote.get('price'), currency)}",
+                        "- 5-year monthly history is not available right now.",
+                    ]
+                )
+            )
+            history_by_ticker[ticker] = []
+            continue
+
+        clean_history = history.dropna(subset=["Close"]).copy()
+        monthly_rows: list[dict[str, Any]] = []
+        for date_index, row in clean_history.iterrows():
+            monthly_rows.append(
+                {
+                    "month": date_index.strftime("%Y-%m"),
+                    "open": round(float(row.get("Open", 0) or 0), 2),
+                    "high": round(float(row.get("High", 0) or 0), 2),
+                    "low": round(float(row.get("Low", 0) or 0), 2),
+                    "close": round(float(row.get("Close", 0) or 0), 2),
+                    "volume": int(row.get("Volume", 0) or 0),
+                }
+            )
+        history_by_ticker[ticker] = monthly_rows
+
+        first_close = float(clean_history["Close"].iloc[0])
+        last_close = float(clean_history["Close"].iloc[-1])
+        total_return = ((last_close - first_close) / first_close) * 100 if first_close else None
+        high_close = float(clean_history["Close"].max())
+        low_close = float(clean_history["Close"].min())
+
+        yearly = clean_history["Close"].resample("YE").last().tail(5)
+        yearly_lines = [
+            f"  - {date_index.year}: {_money(float(close), currency)}"
+            for date_index, close in yearly.items()
+        ]
+
+        monthly_returns = clean_history["Close"].pct_change().dropna() * 100
+        best_month = None
+        worst_month = None
+        if not monthly_returns.empty:
+            best_idx = monthly_returns.idxmax()
+            worst_idx = monthly_returns.idxmin()
+            best_month = f"{best_idx.strftime('%Y-%m')} ({monthly_returns.loc[best_idx]:+.2f}%)"
+            worst_month = f"{worst_idx.strftime('%Y-%m')} ({monthly_returns.loc[worst_idx]:+.2f}%)"
+
+        sections.append(
+            "\n".join(
+                [
+                    f"{ticker} - {quote.get('company_name') or 'Company name unavailable'}",
+                    f"- Current price: {_money(quote.get('price'), currency)}",
+                    f"- 5-year start close: {_money(first_close, currency)}",
+                    f"- Latest monthly close: {_money(last_close, currency)}",
+                    f"- 5-year return: {_format_percent(total_return)}",
+                    f"- Highest monthly close: {_money(high_close, currency)}",
+                    f"- Lowest monthly close: {_money(low_close, currency)}",
+                    f"- Best month: {best_month or 'not available'}",
+                    f"- Worst month: {worst_month or 'not available'}",
+                    "- Year-end close snapshot:",
+                    *yearly_lines,
+                ]
+            )
+        )
+
+    return {
+        "answer": (
+            "5-year stock report\n\n"
+            + "\n\n".join(sections)
+            + "\n\nThe chart below shows monthly close prices. Educational research only, not financial advice."
+        ),
+        "sources": ["Yahoo Finance via yfinance"],
+        "tickers": [quote["ticker"] for quote in quote_rows],
+        "quotes": quote_rows,
+        "history": history_by_ticker,
+    }
+
+
 def _direct_stock_fallback(question: str, mcp_error: str) -> dict[str, Any]:
     tickers = _extract_requested_tickers(question)
     if not tickers:
@@ -165,7 +278,7 @@ def _direct_stock_fallback(question: str, mcp_error: str) -> dict[str, Any]:
         sections.append(
             "\n".join(
                 [
-                    f"{quote['ticker']} — {quote.get('company_name') or 'Company name unavailable'}",
+                    f"{quote['ticker']} - {quote.get('company_name') or 'Company name unavailable'}",
                     f"- Price: {_money(price, currency)}",
                     f"- Previous close: {_money(previous_close, currency)}",
                     f"- Daily change: {change_text}",
@@ -202,7 +315,14 @@ class StockAgent:
 
     def answer(self, question: str) -> AgentResult:
         normalized = question.lower()
-        if any(
+        if _is_five_year_question(question):
+            result = _five_year_stock_report(question)
+            if result is None:
+                result = self.mcp_client.call_tool(
+                    "stock_performance_analysis",
+                    {"question": question},
+                )
+        elif any(
             phrase in normalized
             for phrase in ["best stock", "suggest", "recommend", "top stock", "this month"]
         ):

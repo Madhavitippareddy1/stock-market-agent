@@ -145,7 +145,7 @@ class LangGraphSupervisor:
             "investment": "Investment Agent",
         }
         sub_agents = {
-            "stock": ["Stock Agent", "Portfolio Agent"],
+            "stock": ["Stock Agent"],
             "rag": ["RAG Agent"],
             "user": ["User Agent"],
             "portfolio": ["Portfolio Agent"],
@@ -258,44 +258,11 @@ class LangGraphSupervisor:
 
     def _stock_node(self, state: AgentState) -> AgentState:
         stock_result = self.stock_agent.answer(state["question"])
-        portfolio_result = self.portfolio_agent.answer(
-            state.get("user_id", "demo-user"),
-            "analyze my portfolio",
-        )
-        portfolio_data = portfolio_result.data or {}
-        portfolio_summary_lines = [
-            "Portfolio analysis context:",
-        ]
-        if portfolio_data.get("total_value") is not None:
-            portfolio_summary_lines.extend(
-                [
-                    f"- Portfolio value: ${portfolio_data.get('total_value', 0):,.2f}",
-                    f"- Portfolio gain/loss: ${portfolio_data.get('total_gain_loss', 0):,.2f} "
-                    f"({portfolio_data.get('total_gain_loss_percent', 0):+.2f}%)",
-                ]
-            )
-        risk_alerts = portfolio_data.get("risk_alerts", [])
-        if risk_alerts:
-            portfolio_summary_lines.append("- Key portfolio risks:")
-            portfolio_summary_lines.extend([f"  - {alert}" for alert in risk_alerts[:3]])
-        else:
-            portfolio_summary_lines.append("- No portfolio risk alerts were returned.")
-
-        answer = "\n\n".join(
-            [
-                stock_result.answer,
-                "\n".join(portfolio_summary_lines),
-                "Portfolio note: Use this as educational context only, not a buy/sell instruction.",
-            ]
-        )
         result = AgentResult(
             agent=stock_result.agent,
-            answer=answer,
-            sources=list(dict.fromkeys(stock_result.sources + portfolio_result.sources)),
-            data={
-                **stock_result.data,
-                "portfolio": portfolio_result.data,
-            },
+            answer=stock_result.answer,
+            sources=stock_result.sources,
+            data=stock_result.data,
         ).model_dump()
         return {**state, "result": result}
 

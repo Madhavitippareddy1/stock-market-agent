@@ -558,7 +558,8 @@ def render_research_tab(session_id: str) -> None:
     )
     question = st.text_area(
         "Question",
-        value="amazon stock 5 years report",
+        value="",
+        placeholder="Example: amazon 5-year stock report, compare Apple and Amazon, or analyze uploaded document",
         height=120,
         key="research_question",
     )
@@ -958,8 +959,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_research, tab_portfolio, tab_watchlist, tab_observability, tab_settings = st.tabs(
-    ["Agent Research", "My Portfolio", "My Watchlist", "Observability", "Settings"]
+tab_research, tab_portfolio, tab_watchlist, tab_observability = st.tabs(
+    ["Agent Research", "My Portfolio", "My Watchlist", "Observability"]
 )
 
 with tab_research:
@@ -973,6 +974,3 @@ with tab_watchlist:
 
 with tab_observability:
     render_observability_tab()
-
-with tab_settings:
-    render_settings_tab()
