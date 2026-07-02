@@ -17,13 +17,19 @@ def dry_run_result(example: GoldenExample) -> dict:
     """Cheap CI-safe result used to verify dataset and evaluator wiring."""
 
     answer_terms = ", ".join(example.expected_terms)
+    data = {}
+    if example.expected_tool:
+        data["tool"] = example.expected_tool
+    if example.expected_prompt:
+        data["prompt"] = example.expected_prompt
+    elif example.expected_agent == "Investment Agent":
+        data["prompt"] = {"name": "investment_research_summary", "version": "v1.0.0"}
+
     return {
         "agent": example.expected_agent,
         "answer": f"Dry-run expected answer for {example.question}. Key terms: {answer_terms}.",
         "sources": ["golden-dataset://dry-run"],
-        "data": {
-            "prompt": {"name": "dry_run", "version": "v0"},
-        },
+        "data": data,
     }
 
 

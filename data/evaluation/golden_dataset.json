@@ -1,30 +1,366 @@
 {
-  "schema_version": "1.0",
-  "description": "Golden dataset for Stock Market Agent regression and quality checks. Covers happy paths, edge cases, routing, RAG, portfolio, watchlist, and investment questions.",
+  "schema_version": "1.1",
+  "description": "Golden dataset for Stock Market Agent regression and quality checks. Covers routing, tools, prompt-version expectations, RAG, portfolio, watchlist, stock history, and investment questions.",
+  "active_prompt_versions": {
+    "investment_research_summary": "v1.0.0",
+    "trajectory_judge": "v1.0.0"
+  },
+  "quality_gates": {
+    "minimum_examples": 20,
+    "minimum_pass_rate": 0.85,
+    "minimum_average_score": 0.85
+  },
   "examples": [
-    {"id": "golden-001", "category": "stock_price", "question": "Cisco Systems share price", "expected_agent": "Stock Agent", "expected_terms": ["Cisco", "price"]},
-    {"id": "golden-002", "category": "stock_price", "question": "Walmart Inc stock price", "expected_agent": "Stock Agent", "expected_terms": ["Walmart", "price"]},
-    {"id": "golden-003", "category": "stock_price", "question": "Target Corporation share price", "expected_agent": "Stock Agent", "expected_terms": ["Target", "price"]},
-    {"id": "golden-004", "category": "stock_comparison", "question": "compare Apple and Meta stocks", "expected_agent": "Stock Agent", "expected_terms": ["AAPL", "META"]},
-    {"id": "golden-005", "category": "stock_comparison", "question": "compare Nvidia with Amazon", "expected_agent": "Stock Agent", "expected_terms": ["NVDA", "AMZN"]},
-    {"id": "golden-006", "category": "investment", "question": "is buying PepsiCo shares right time or not", "expected_agent": "Investment Agent", "expected_terms": ["PepsiCo", "risk", "disclaimer"]},
-    {"id": "golden-007", "category": "investment", "question": "suggest me the best stock of this month", "expected_agent": "Investment Agent", "expected_terms": ["suggest", "risk", "educational"]},
-    {"id": "golden-008", "category": "portfolio", "question": "analyze my portfolio", "expected_agent": "Portfolio Agent", "expected_terms": ["portfolio", "risk"]},
-    {"id": "golden-009", "category": "portfolio", "question": "show portfolio risk alerts", "expected_agent": "Portfolio Agent", "expected_terms": ["risk", "alert"]},
-    {"id": "golden-010", "category": "watchlist", "question": "show my watchlist", "expected_agent": "User Agent", "expected_terms": ["watchlist"]},
-    {"id": "golden-011", "category": "user", "question": "show my risk profile", "expected_agent": "User Agent", "expected_terms": ["risk", "profile"]},
-    {"id": "golden-012", "category": "rag", "question": "Apple 5 years report", "expected_agent": "RAG Agent", "expected_terms": ["AAPL", "report"]},
-    {"id": "golden-013", "category": "rag", "question": "analyse Nvidia 5 year financial report", "expected_agent": "RAG Agent", "expected_terms": ["NVDA", "financial"]},
-    {"id": "golden-014", "category": "rag", "question": "summarize Costco annual report", "expected_agent": "RAG Agent", "expected_terms": ["COST", "report"]},
-    {"id": "golden-015", "category": "edge_case", "question": "what is the stock price for CSX Corporation", "expected_agent": "Stock Agent", "expected_terms": ["CSX", "price"]},
-    {"id": "golden-016", "category": "edge_case", "question": "can I buy Target", "expected_agent": "Investment Agent", "expected_terms": ["Target", "risk"]},
-    {"id": "golden-017", "category": "edge_case", "question": "MRVL quarterly report summary", "expected_agent": "RAG Agent", "expected_terms": ["MRVL", "report"]},
-    {"id": "golden-018", "category": "dashboard", "question": "refresh top 10 stocks", "expected_agent": "Stock Agent", "expected_terms": ["top", "stocks"]},
-    {"id": "golden-019", "category": "investment", "question": "recommend best sector for my portfolio", "expected_agent": "Investment Agent", "expected_terms": ["sector", "portfolio"]},
-    {"id": "golden-020", "category": "portfolio", "question": "show my profit and loss for last 5 years", "expected_agent": "Portfolio Agent", "expected_terms": ["profit", "loss"]},
-    {"id": "golden-021", "category": "rag", "question": "Amazon cash flow in the 5 year report", "expected_agent": "RAG Agent", "expected_terms": ["AMZN", "cash flow"]},
-    {"id": "golden-022", "category": "stock_comparison", "question": "compare Microsoft and Google recent performance", "expected_agent": "Stock Agent", "expected_terms": ["MSFT", "GOOGL"]},
-    {"id": "golden-023", "category": "watchlist", "question": "which stocks are in my saved watchlist", "expected_agent": "User Agent", "expected_terms": ["watchlist"]},
-    {"id": "golden-024", "category": "investment", "question": "should I sell Tesla from my portfolio", "expected_agent": "Investment Agent", "expected_terms": ["Tesla", "portfolio", "risk"]}
+    {
+      "id": "golden-001",
+      "category": "stock_price",
+      "question": "Cisco Systems share price",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "CSCO",
+        "price",
+        "Cisco"
+      ]
+    },
+    {
+      "id": "golden-002",
+      "category": "stock_price",
+      "question": "Walmart Inc stock price",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "WMT",
+        "price",
+        "Walmart"
+      ]
+    },
+    {
+      "id": "golden-003",
+      "category": "stock_price",
+      "question": "Target Corporation share price",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "TGT",
+        "price",
+        "Target"
+      ]
+    },
+    {
+      "id": "golden-004",
+      "category": "stock_price",
+      "question": "CSX Corporation stock price",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "CSX",
+        "price"
+      ]
+    },
+    {
+      "id": "golden-005",
+      "category": "stock_comparison",
+      "question": "compare Apple and Meta stocks",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "AAPL",
+        "META"
+      ]
+    },
+    {
+      "id": "golden-006",
+      "category": "stock_comparison",
+      "question": "compare Nvidia with Amazon",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "NVDA",
+        "AMZN"
+      ]
+    },
+    {
+      "id": "golden-007",
+      "category": "stock_comparison",
+      "question": "compare Microsoft and Google recent performance",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_performance_analysis",
+      "expected_terms": [
+        "MSFT",
+        "GOOGL",
+        "performance"
+      ]
+    },
+    {
+      "id": "golden-008",
+      "category": "stock_history",
+      "question": "amazon stock 5 years report",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_performance_analysis",
+      "expected_terms": [
+        "AMZN",
+        "5-year",
+        "monthly"
+      ]
+    },
+    {
+      "id": "golden-009",
+      "category": "stock_history",
+      "question": "walmart 5 years stock",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_performance_analysis",
+      "expected_terms": [
+        "WMT",
+        "5-year",
+        "return"
+      ]
+    },
+    {
+      "id": "golden-010",
+      "category": "stock_history",
+      "question": "Apple detailed 5-year monthly history",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_performance_analysis",
+      "expected_terms": [
+        "AAPL",
+        "monthly",
+        "history"
+      ]
+    },
+    {
+      "id": "golden-011",
+      "category": "investment",
+      "question": "is buying PepsiCo shares right time or not",
+      "expected_agent": "Investment Agent",
+      "expected_prompt": {
+        "name": "investment_research_summary",
+        "version": "v1.0.0"
+      },
+      "expected_terms": [
+        "PepsiCo",
+        "risk",
+        "disclaimer"
+      ]
+    },
+    {
+      "id": "golden-012",
+      "category": "investment",
+      "question": "can I buy Target",
+      "expected_agent": "Investment Agent",
+      "expected_prompt": {
+        "name": "investment_research_summary",
+        "version": "v1.0.0"
+      },
+      "expected_terms": [
+        "Target",
+        "risk",
+        "educational"
+      ]
+    },
+    {
+      "id": "golden-013",
+      "category": "investment",
+      "question": "should I sell Tesla from my portfolio",
+      "expected_agent": "Investment Agent",
+      "expected_prompt": {
+        "name": "investment_research_summary",
+        "version": "v1.0.0"
+      },
+      "expected_terms": [
+        "Tesla",
+        "portfolio",
+        "risk"
+      ]
+    },
+    {
+      "id": "golden-014",
+      "category": "investment",
+      "question": "suggest me the best stock of this month",
+      "expected_agent": "Investment Agent",
+      "expected_prompt": {
+        "name": "investment_research_summary",
+        "version": "v1.0.0"
+      },
+      "expected_terms": [
+        "suggest",
+        "risk",
+        "educational"
+      ]
+    },
+    {
+      "id": "golden-015",
+      "category": "investment",
+      "question": "recommend best sector for my portfolio",
+      "expected_agent": "Investment Agent",
+      "expected_prompt": {
+        "name": "investment_research_summary",
+        "version": "v1.0.0"
+      },
+      "expected_terms": [
+        "sector",
+        "portfolio",
+        "risk"
+      ]
+    },
+    {
+      "id": "golden-016",
+      "category": "portfolio",
+      "question": "analyze my portfolio",
+      "expected_agent": "Portfolio Agent",
+      "expected_tool": "portfolio_analysis",
+      "expected_terms": [
+        "portfolio",
+        "risk"
+      ]
+    },
+    {
+      "id": "golden-017",
+      "category": "portfolio",
+      "question": "show portfolio risk alerts",
+      "expected_agent": "Portfolio Agent",
+      "expected_tool": "portfolio_analysis",
+      "expected_terms": [
+        "risk",
+        "alert"
+      ]
+    },
+    {
+      "id": "golden-018",
+      "category": "portfolio",
+      "question": "show my profit and loss for holdings",
+      "expected_agent": "Portfolio Agent",
+      "expected_tool": "portfolio_analysis",
+      "expected_terms": [
+        "profit",
+        "loss"
+      ]
+    },
+    {
+      "id": "golden-019",
+      "category": "user",
+      "question": "show my watchlist",
+      "expected_agent": "User Agent",
+      "expected_tool": "user_context",
+      "expected_terms": [
+        "watchlist"
+      ]
+    },
+    {
+      "id": "golden-020",
+      "category": "user",
+      "question": "show my risk profile",
+      "expected_agent": "User Agent",
+      "expected_tool": "user_context",
+      "expected_terms": [
+        "risk",
+        "profile"
+      ]
+    },
+    {
+      "id": "golden-021",
+      "category": "user",
+      "question": "which stocks are in my saved watchlist",
+      "expected_agent": "User Agent",
+      "expected_tool": "user_context",
+      "expected_terms": [
+        "watchlist"
+      ]
+    },
+    {
+      "id": "golden-022",
+      "category": "rag",
+      "question": "analyse this uploaded PDF report",
+      "expected_agent": "RAG Agent",
+      "expected_terms": [
+        "uploaded",
+        "report"
+      ]
+    },
+    {
+      "id": "golden-023",
+      "category": "rag",
+      "question": "summarize the uploaded annual report",
+      "expected_agent": "RAG Agent",
+      "expected_terms": [
+        "summary",
+        "report"
+      ]
+    },
+    {
+      "id": "golden-024",
+      "category": "rag",
+      "question": "summarize Costco annual report",
+      "expected_agent": "RAG Agent",
+      "expected_terms": [
+        "COST",
+        "report"
+      ]
+    },
+    {
+      "id": "golden-025",
+      "category": "rag",
+      "question": "MRVL quarterly report summary",
+      "expected_agent": "RAG Agent",
+      "expected_terms": [
+        "MRVL",
+        "report"
+      ]
+    },
+    {
+      "id": "golden-026",
+      "category": "rag",
+      "question": "Amazon cash flow in the financial report",
+      "expected_agent": "RAG Agent",
+      "expected_terms": [
+        "AMZN",
+        "cash flow"
+      ]
+    },
+    {
+      "id": "golden-027",
+      "category": "dashboard",
+      "question": "refresh top 10 stocks",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "top",
+        "stocks"
+      ]
+    },
+    {
+      "id": "golden-028",
+      "category": "edge_case",
+      "question": "what is the price for Pepsi",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "PEP",
+        "price"
+      ]
+    },
+    {
+      "id": "golden-029",
+      "category": "edge_case",
+      "question": "NVDIA share price",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "NVDA",
+        "price"
+      ]
+    },
+    {
+      "id": "golden-030",
+      "category": "edge_case",
+      "question": "compare apple meta amazon",
+      "expected_agent": "Stock Agent",
+      "expected_tool": "stock_research",
+      "expected_terms": [
+        "AAPL",
+        "META",
+        "AMZN"
+      ]
+    }
   ]
 }

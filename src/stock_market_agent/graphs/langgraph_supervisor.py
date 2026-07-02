@@ -61,15 +61,21 @@ class LangGraphSupervisor:
             "uploaded_file": uploaded_file,
         }
         observability = get_observability()
+        prompt_catalog = get_prompt_catalog()
+        active_prompt_versions = prompt_catalog.active_versions()
+        trace_metadata = {
+            "has_uploaded_file": uploaded_file is not None,
+            "conversation_context_chars": len(conversation_context or ""),
+            "prompt_versions": active_prompt_versions,
+            "active_prompt_environment": prompt_catalog.settings.active_prompt_environment,
+            "prompt_catalog_path": str(prompt_catalog.path),
+        }
         with observability.trace_agent_run(
             name="stock-market-agent-request",
             question=question,
             user_id=user_id,
             session_id=user_id,
-            metadata={
-                "has_uploaded_file": uploaded_file is not None,
-                "conversation_context_chars": len(conversation_context or ""),
-            },
+            metadata=trace_metadata,
         ) as span:
             timer = get_metrics_service().start_request(question=question, user_id=user_id)
             try:
@@ -100,9 +106,11 @@ class LangGraphSupervisor:
                             "sources": result.get("sources", []),
                         },
                         metadata={
+                            **trace_metadata,
                             "route": route,
                             "agent": result.get("agent"),
                             "source_count": len(result.get("sources", [])),
+                            "selected_prompt": (result.get("data") or {}).get("prompt"),
                         },
                     )
                     span.score_trace(
