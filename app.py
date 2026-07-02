@@ -87,12 +87,12 @@ def fetch_investment_users(client: McpClient) -> list[dict]:
 
 def user_option_label(user_id: str, users: list[dict]) -> str:
     if user_id == "demo-user":
-        return "Demo User — demo-user"
+        return "Demo User â€” demo-user"
     user = next((item for item in users if item["user_id"] == user_id), None)
     if not user:
         return user_id
     return (
-        f"{user.get('display_name', user_id)} — {user_id} "
+        f"{user.get('display_name', user_id)} â€” {user_id} "
         f"({user.get('sector', 'sector not set')})"
     )
 
@@ -229,6 +229,95 @@ def render_risk_alert_chart(data: dict) -> None:
     with risk_bar_col:
         st.caption("Risk alert counts")
         st.altair_chart(bar_chart, width="stretch")
+
+
+def remove_full_monthly_history_text(answer: str) -> str:
+    """Hide verbose monthly close rows when chart data is available."""
+
+    lines = answer.splitlines()
+    cleaned: list[str] = []
+    skipping = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "- Full 5-year monthly close history:":
+            cleaned.append("- Full 5-year monthly close history is shown in the chart below.")
+            skipping = True
+            continue
+        if skipping:
+            if line.startswith("  - "):
+                continue
+            skipping = False
+        cleaned.append(line)
+    return "\n".join(cleaned)
+
+
+def render_stock_history_chart(result: dict[str, Any]) -> None:
+    """Render structured 5-year monthly history from Stock Agent as a chart."""
+
+    data = result.get("data") or {}
+    history = data.get("history") or (data.get("stock") or {}).get("history") or {}
+    if not history:
+        return
+
+    rows: list[dict[str, Any]] = []
+    for ticker, monthly_rows in history.items():
+        for row in monthly_rows or []:
+            if row.get("month") and row.get("close") is not None:
+                rows.append(
+                    {
+                        "ticker": ticker,
+                        "month": row.get("month"),
+                        "open": row.get("open"),
+                        "high": row.get("high"),
+                        "low": row.get("low"),
+                        "close": row.get("close"),
+                        "volume": row.get("volume"),
+                    }
+                )
+    if not rows:
+        return
+
+    history_df = pd.DataFrame(rows)
+    history_df["month"] = pd.to_datetime(history_df["month"])
+    history_df = history_df.sort_values(["ticker", "month"])
+
+    st.markdown("### 5-year monthly close chart")
+    chart = (
+        alt.Chart(history_df)
+        .mark_line(point=alt.OverlayMarkDef(size=20, filled=True))
+        .encode(
+            x=alt.X("month:T", title="Month"),
+            y=alt.Y("close:Q", title="Monthly close price", scale=alt.Scale(zero=False)),
+            color=alt.Color("ticker:N", title="Ticker"),
+            tooltip=[
+                alt.Tooltip("ticker:N", title="Ticker"),
+                alt.Tooltip("month:T", title="Month", format="%Y-%m"),
+                alt.Tooltip("open:Q", title="Open", format=",.2f"),
+                alt.Tooltip("high:Q", title="High", format=",.2f"),
+                alt.Tooltip("low:Q", title="Low", format=",.2f"),
+                alt.Tooltip("close:Q", title="Close", format=",.2f"),
+                alt.Tooltip("volume:Q", title="Volume", format=","),
+            ],
+        )
+        .properties(height=360)
+    )
+    st.altair_chart(chart, width="stretch")
+
+    first = history_df.sort_values("month").groupby("ticker").head(1)
+    latest = history_df.sort_values("month").groupby("ticker").tail(1)
+    summary_df = first[["ticker", "close"]].rename(columns={"close": "start_close"}).merge(
+        latest[["ticker", "close"]].rename(columns={"close": "latest_close"}),
+        on="ticker",
+    )
+    summary_df["return_%"] = (
+        (summary_df["latest_close"] - summary_df["start_close"]) / summary_df["start_close"] * 100
+    ).round(2)
+    st.dataframe(summary_df, width="stretch", hide_index=True)
+
+    with st.expander("View monthly history table", expanded=False):
+        table_df = history_df.copy()
+        table_df["month"] = table_df["month"].dt.strftime("%Y-%m")
+        st.dataframe(table_df, width="stretch", hide_index=True)
 
 
 def show_portfolio_risk_alerts(data: dict) -> None:
@@ -587,7 +676,7 @@ def render_status_cards() -> None:
             """
             <div class="mini-card">
               <div class="mini-card-title">Agents</div>
-              <div class="mini-card-value">Stock · RAG · User · Portfolio</div>
+              <div class="mini-card-value">Stock Â· RAG Â· User Â· Portfolio</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -607,7 +696,7 @@ def render_status_cards() -> None:
             """
             <div class="mini-card">
               <div class="mini-card-title">Deployment</div>
-              <div class="mini-card-value">AWS ready · ECS · RDS</div>
+              <div class="mini-card-value">AWS ready Â· ECS Â· RDS</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -623,6 +712,8 @@ def run_chat_prompt(prompt: str, session_id: str, context: str = "") -> dict[str
         user_id=session_id,
         conversation_context=combined_context,
     )
+    if result.get("agent") == "Stock Agent":
+        result["answer"] = remove_full_monthly_history_text(result.get("answer", ""))
     agent_name = result.get("agent", "Agent")
     agent_flow = build_agent_flow(prompt, result)
     answer_with_trace = "\n\n".join(
@@ -1041,7 +1132,7 @@ def render_chat_history(session_id: str, limit: int = 30) -> None:
         return
 
     for message in messages:
-        avatar = "🧑" if message.role == "user" else "🤖"
+        avatar = "ðŸ§‘" if message.role == "user" else "ðŸ¤–"
         with st.chat_message(message.role, avatar=avatar):
             st.markdown(message.content)
             if message.role != "user":
@@ -1071,10 +1162,10 @@ def show_agent_routing_help() -> None:
 
         **Typical flow examples**
 
-        - Stock price: Chatbot → LangGraph Supervisor → Stock Agent → MCP stock tool → Yahoo Finance.
-        - Portfolio risk: Chatbot → LangGraph Supervisor → Portfolio Agent → MCP portfolio tool → SQLite + Yahoo Finance.
-        - Uploaded report: Chatbot → LangGraph Supervisor → RAG Agent → extract text → chunk → retrieve → answer.
-        - Investment question: Chatbot → LangGraph Supervisor → Investment Agent → Stock + User + Portfolio Agents → Bedrock summary.
+        - Stock price: Chatbot â†’ LangGraph Supervisor â†’ Stock Agent â†’ MCP stock tool â†’ Yahoo Finance.
+        - Portfolio risk: Chatbot â†’ LangGraph Supervisor â†’ Portfolio Agent â†’ MCP portfolio tool â†’ SQLite + Yahoo Finance.
+        - Uploaded report: Chatbot â†’ LangGraph Supervisor â†’ RAG Agent â†’ extract text â†’ chunk â†’ retrieve â†’ answer.
+        - Investment question: Chatbot â†’ LangGraph Supervisor â†’ Investment Agent â†’ Stock + User + Portfolio Agents â†’ Bedrock summary.
         """
     )
 
@@ -1112,7 +1203,28 @@ def render_observability_dashboard() -> None:
     st.caption(
         "Live app-level metrics from local JSONL telemetry plus Langfuse traces for LLM calls."
     )
+    settings = get_settings()
     summary = get_metrics_service().dashboard_summary()
+
+    status_cols = st.columns(4)
+    status_cols[0].metric("Telemetry file", "Found" if summary.get("events") else "Empty")
+    status_cols[1].metric("Metric events", len(summary.get("events", [])))
+    status_cols[2].metric("Langfuse", "Enabled" if settings.langfuse_enabled else "Disabled")
+    status_cols[3].metric("RAGAS", "Enabled" if settings.ragas_enabled else "Disabled")
+
+    st.caption(f"Metrics path: `{settings.observability_metrics_path}`")
+    if not settings.langfuse_enabled:
+        st.warning(
+            "Langfuse is disabled in the current local `.env`. "
+            "Local request metrics still work, but Langfuse cloud traces will not appear until "
+            "`LANGFUSE_ENABLED=true` and the Langfuse keys are configured, then Streamlit is restarted."
+        )
+    elif not settings.langfuse_public_key or not settings.langfuse_secret_key:
+        st.warning(
+            "Langfuse is enabled, but public/secret keys are missing. "
+            "Add `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY`, then restart Streamlit."
+        )
+
     metric_cols = st.columns(6)
     metric_cols[0].metric("Requests", summary["request_count"])
     metric_cols[1].metric("Error rate", f"{summary['error_rate'] * 100:.1f}%")
@@ -1174,10 +1286,17 @@ def render_observability_dashboard() -> None:
             )
 
     st.markdown("### Langfuse / LLM monitoring")
-    st.write(
-        "Langfuse is enabled in AWS ECS. It captures conversation traces, selected agent, "
-        "prompt inputs, outputs, RAGAS scores, and source-count scores."
-    )
+    if settings.langfuse_enabled and settings.langfuse_public_key and settings.langfuse_secret_key:
+        st.success(
+            "Langfuse is configured for this runtime. It captures conversation traces, "
+            "selected agent, prompt inputs, outputs, RAGAS scores, and source-count scores."
+        )
+        st.caption(f"Langfuse URL: {settings.langfuse_base_url}")
+    else:
+        st.info(
+            "Langfuse cloud tracing is not active for this local runtime. "
+            "The dashboard above is reading local JSONL metrics only."
+        )
 
     st.markdown("### Prompt catalogue and versioning")
     prompt_versions = get_prompt_catalog().active_versions()
@@ -1215,7 +1334,7 @@ supervisor = LangGraphSupervisor(
 )
 
 with st.sidebar:
-    st.header("💬 Stock Chatbot")
+    st.header("ðŸ’¬ Stock Chatbot")
     session_id = st.text_input("Chat / User ID", value="demo-user", key="chat_session")
     st.caption("Past messages are saved and reused as context.")
 
@@ -1304,11 +1423,11 @@ with st.sidebar:
 
 tab_research, tab_portfolio, tab_watchlist, tab_observability, tab_settings = st.tabs(
     [
-        "🔎 Agent Research",
-        "📊 My Portfolio",
-        "⭐ My Watchlist",
-        "📈 Observability",
-        "⚙️ Settings",
+        "ðŸ”Ž Agent Research",
+        "ðŸ“Š My Portfolio",
+        "â­ My Watchlist",
+        "ðŸ“ˆ Observability",
+        "âš™ï¸ Settings",
     ]
 )
 
@@ -1339,10 +1458,13 @@ with tab_research:
                 uploaded_file=uploaded_file,
                 conversation_context=history_context,
             )
+            if result.get("agent") == "Stock Agent":
+                result["answer"] = remove_full_monthly_history_text(result.get("answer", ""))
             persist_tab_agent_trace("research", question, result, session_id)
             chat_history.add_message(session_id, "assistant", result["answer"])
             st.subheader(result["agent"])
             st.write(result["answer"])
+            render_stock_history_chart(result)
             render_ragas_scores(result)
             show_stock_advice_disclaimer()
 
@@ -1352,7 +1474,7 @@ with tab_research:
 
     render_saved_tab_agent_trace(
         "research",
-        "Run an Agent Research question to see the exact Supervisor → Agent → Tool flow.",
+        "Run an Agent Research question to see the exact Supervisor â†’ Agent â†’ Tool flow.",
     )
 
 with tab_portfolio:
@@ -1479,7 +1601,7 @@ with tab_portfolio:
                 if "No major" in alert:
                     st.success(alert)
                 else:
-                    st.warning(f"⚠️ {alert}")
+                    st.warning(f"âš ï¸ {alert}")
         elif False:
             st.info("No portfolio risk alerts returned.")
 
@@ -1489,7 +1611,7 @@ with tab_portfolio:
 
     render_saved_tab_agent_trace(
         "portfolio",
-        "Click Analyze portfolio to see the exact Supervisor → Portfolio Agent → MCP flow.",
+        "Click Analyze portfolio to see the exact Supervisor â†’ Portfolio Agent â†’ MCP flow.",
     )
 
 with tab_watchlist:
@@ -1621,7 +1743,7 @@ with tab_watchlist:
 
     render_saved_tab_agent_trace(
         "watchlist",
-        "Run a Watchlist question to see the exact Supervisor → User Agent → MCP flow.",
+        "Run a Watchlist question to see the exact Supervisor â†’ User Agent â†’ MCP flow.",
     )
 
 with tab_observability:
