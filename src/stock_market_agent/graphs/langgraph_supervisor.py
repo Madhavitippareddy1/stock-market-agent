@@ -82,9 +82,16 @@ class LangGraphSupervisor:
                 final_state = self.graph.invoke(state)
                 result = final_state["result"]
                 route = final_state.get("route")
+                agent_flow = self._build_agent_flow(route, result.get("agent", "Agent"))
+                result_data = result.get("data") or {}
+                result["data"] = {
+                    **result_data,
+                    "agent_flow": agent_flow,
+                }
                 result_data = result.get("data") or {}
                 request_metadata: dict[str, Any] = {
                     "source_count": len(result.get("sources", [])),
+                    "agent_flow": agent_flow,
                 }
                 if result_data.get("ragas"):
                     request_metadata["ragas"] = result_data["ragas"]
@@ -128,6 +135,37 @@ class LangGraphSupervisor:
                 except Exception:
                     pass
             return result
+
+    def _build_agent_flow(self, route: RouteName | None, final_agent: str) -> dict[str, Any]:
+        route_labels = {
+            "stock": "Stock Agent",
+            "rag": "RAG Agent",
+            "user": "User Agent",
+            "portfolio": "Portfolio Agent",
+            "investment": "Investment Agent",
+        }
+        sub_agents = {
+            "stock": ["Stock Agent", "Portfolio Agent"],
+            "rag": ["RAG Agent"],
+            "user": ["User Agent"],
+            "portfolio": ["Portfolio Agent"],
+            "investment": ["Stock Agent", "User Agent", "Portfolio Agent", "Amazon Bedrock"],
+        }
+        selected_route = route or "stock"
+        selected_agents = sub_agents.get(selected_route, [final_agent])
+        return {
+            "supervisor": "Supervisor Agent",
+            "route": selected_route,
+            "selected_agent": route_labels.get(selected_route, final_agent),
+            "sub_agents": selected_agents,
+            "steps": [
+                "User question/upload received",
+                "Supervisor Agent reads the request",
+                f"Route selected: {selected_route}",
+                "Call sub-agent(s): " + " -> ".join(selected_agents),
+                f"Final response returned by {final_agent}",
+            ],
+        }
 
     def _build_graph(self):
         workflow = StateGraph(AgentState)

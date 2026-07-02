@@ -44,6 +44,7 @@ def init_state() -> None:
         "observability_result": None,
         "chatbot_result": None,
         "last_agent_call": "None",
+        "last_agent_flow": None,
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -108,6 +109,28 @@ def apply_styles() -> None:
             margin-top: 1rem;
             line-height: 1.55;
         }
+        .chat-panel {
+            background: #18243a;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 1rem;
+            padding: 1rem;
+            margin: 0.75rem 0 1rem 0;
+        }
+        .flow-card {
+            background: #f8fafc;
+            border: 1px solid #e4e7ec;
+            border-radius: 0.9rem;
+            padding: 0.9rem 1rem;
+            margin: 0.65rem 0;
+            color: #101828;
+        }
+        .flow-card strong {
+            color: #101828;
+        }
+        .flow-route {
+            color: #d92d20;
+            font-weight: 800;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -170,6 +193,19 @@ def render_agent_result(result: dict[str, Any] | None) -> None:
     render_disclaimer()
 
 
+def render_compact_agent_result(result: dict[str, Any] | None) -> None:
+    if not result:
+        return
+    st.caption(result.get("agent", "Agent"))
+    answer = result.get("answer", "No answer returned.")
+    if len(answer) > 1800:
+        answer = f"{answer[:1800].rstrip()}..."
+    st.markdown(answer)
+    if result.get("sources"):
+        st.caption(f"Sources: {len(result['sources'])}")
+    render_disclaimer()
+
+
 def render_chat_history(session_id: str, limit: int = 8) -> None:
     try:
         history = api_get(f"/chat/{session_id}", limit=limit)
@@ -188,6 +224,77 @@ def render_chat_history(session_id: str, limit: int = 8) -> None:
             st.markdown(message.get("content", ""))
             if message.get("created_at"):
                 st.caption(message["created_at"])
+
+
+def get_agent_flow(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not result:
+        return None
+    data = result.get("data") or {}
+    flow = data.get("agent_flow")
+    if isinstance(flow, dict):
+        return flow
+
+    agent = result.get("agent", "Agent")
+    route = agent.lower().replace(" agent", "").replace(" ", "_")
+    return {
+        "supervisor": "Supervisor Agent",
+        "route": route,
+        "selected_agent": agent,
+        "sub_agents": [agent],
+        "steps": [
+            "User question/upload received",
+            "Supervisor Agent routed the request",
+            f"Final response returned by {agent}",
+        ],
+    }
+
+
+def render_agent_flow(result: dict[str, Any] | None, title: str = "Supervisor and sub-agent flow") -> None:
+    flow = get_agent_flow(result)
+    if not flow:
+        st.info("No agent flow yet. Ask a question or upload a document to see the route.")
+        return
+
+    sub_agents = flow.get("sub_agents") or [flow.get("selected_agent", "Agent")]
+    steps = flow.get("steps") or []
+
+    st.markdown(f"### {title}")
+    st.markdown(
+        f"""
+        <div class="flow-card">
+            <strong>User request</strong> -> <strong>{flow.get("supervisor", "Supervisor Agent")}</strong>
+            -> <span class="flow-route">{flow.get("route", "route")}</span>
+            -> <strong>{flow.get("selected_agent", "Agent")}</strong>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    flow_rows = [
+        {"step": "1", "component": "User", "action": "Submits a question or uploaded file"},
+        {"step": "2", "component": "Supervisor Agent", "action": "Classifies the request and chooses the route"},
+    ]
+    for index, agent_name in enumerate(sub_agents, start=3):
+        flow_rows.append(
+            {
+                "step": str(index),
+                "component": agent_name,
+                "action": "Runs the selected tool/analysis for this request",
+            }
+        )
+    flow_rows.append(
+        {
+            "step": str(len(flow_rows) + 1),
+            "component": "Streamlit UI",
+            "action": "Renders the answer, sources, charts, and disclaimer",
+        }
+    )
+    st.dataframe(pd.DataFrame(flow_rows), width="stretch", hide_index=True)
+
+    if steps:
+        with st.expander("Detailed route steps", expanded=False):
+            for step in steps:
+                st.write(f"- {step}")
 
 
 def load_seed_users() -> list[dict[str, Any]]:
@@ -372,21 +479,18 @@ def render_sidebar() -> str:
     with st.sidebar:
         st.header("Stock Chatbot")
         session_id = st.text_input("Chat / User ID", value="demo-user", key="chat_session")
-        st.caption("Past messages are saved and reused as context.")
+        st.caption("Ask questions here. Past messages are saved and reused as context.")
 
-        col_clear, col_refresh = st.columns(2)
-        with col_clear:
-            if st.button("Clear", key="clear_chat_button", width="stretch"):
-                try:
-                    api_delete(f"/chat/{session_id}")
-                    st.session_state["chatbot_result"] = None
-                    st.success("Cleared")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Clear failed: {exc}")
-        with col_refresh:
-            if st.button("Refresh", key="refresh_chat_button", width="stretch"):
+        if st.button("Clear chat", key="clear_chat_button", width="stretch"):
+            try:
+                api_delete(f"/chat/{session_id}")
+                st.session_state["chatbot_result"] = None
+                st.session_state["last_agent_call"] = "None"
+                st.session_state["last_agent_flow"] = None
+                st.success("Chat cleared")
                 st.rerun()
+            except Exception as exc:
+                st.error(f"Clear failed: {exc}")
 
         try:
             messages = api_get(f"/chat/{session_id}", limit=50).get("messages", [])
@@ -396,8 +500,9 @@ def render_sidebar() -> str:
         metric_col.metric("Messages", len(messages))
         agent_col.metric("Last agent", st.session_state.get("last_agent_call", "None"))
 
+        st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
         prompt = st.text_area(
-            "Ask the assistant",
+            "Chat question",
             placeholder="Example: compare Apple and Meta, or analyze my portfolio",
             key="sidebar_prompt",
             height=95,
@@ -411,9 +516,17 @@ def render_sidebar() -> str:
                         result = api_post("/research", {"question": prompt, "user_id": session_id})
                         st.session_state["chatbot_result"] = result
                         st.session_state["last_agent_call"] = result.get("agent", "Agent")
+                        st.session_state["last_agent_flow"] = get_agent_flow(result)
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Chat request failed: {exc}")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        if st.session_state.get("chatbot_result"):
+            with st.expander("Latest chatbot answer", expanded=True):
+                render_compact_agent_result(st.session_state["chatbot_result"])
+            with st.expander("Supervisor and sub-agent call", expanded=True):
+                render_agent_flow(st.session_state["chatbot_result"], title="Flow for latest chat")
 
         st.markdown("### Recent chat")
         render_chat_history(session_id, limit=4)
@@ -479,10 +592,17 @@ def render_research_tab(session_id: str) -> None:
                         )
                     st.session_state["research_result"] = result
                     st.session_state["last_agent_call"] = result.get("agent", "Agent")
+                    st.session_state["last_agent_flow"] = get_agent_flow(result)
                 except Exception as exc:
                     st.error(f"Research failed: {exc}")
 
     render_agent_result(st.session_state.get("research_result"))
+    if st.session_state.get("research_result"):
+        with st.expander("Supervisor and sub-agent call for this request", expanded=True):
+            render_agent_flow(
+                st.session_state.get("research_result"),
+                title="Flow for this question/upload",
+            )
 
 
 def render_portfolio_tab(session_id: str) -> None:
@@ -837,10 +957,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-if st.session_state.get("chatbot_result"):
-    with st.expander("Latest chatbot answer", expanded=False):
-        render_agent_result(st.session_state["chatbot_result"])
 
 tab_research, tab_portfolio, tab_watchlist, tab_observability, tab_settings = st.tabs(
     ["Agent Research", "My Portfolio", "My Watchlist", "Observability", "Settings"]
