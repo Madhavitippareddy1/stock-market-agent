@@ -1132,12 +1132,14 @@ def render_chat_history(session_id: str, limit: int = 30) -> None:
         return
 
     for message in messages:
-        avatar = "ðŸ§‘" if message.role == "user" else "ðŸ¤–"
-        with st.chat_message(message.role, avatar=avatar):
+        avatar = "user" if message.role == "user" else "assistant"
+        role = "user" if message.role == "user" else "assistant"
+        with st.chat_message(role, avatar=avatar):
             st.markdown(message.content)
             if message.role != "user":
                 st.caption(STOCK_ADVICE_DISCLAIMER)
             st.caption(message.created_at)
+
 
 
 def show_agent_routing_help() -> None:
