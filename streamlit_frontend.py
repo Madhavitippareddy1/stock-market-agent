@@ -487,10 +487,22 @@ def render_research_tab(session_id: str) -> None:
 
 def render_portfolio_tab(session_id: str) -> None:
     st.markdown("### Portfolio dashboard")
+    st.caption("Review user holdings, risk concentration, gain/loss, and educational recommendations.")
     portfolio_user, selected_user = render_user_picker(session_id, "portfolio")
     render_user_summary(selected_user, portfolio_user)
 
-    if st.button("Analyze portfolio", key="analyze_portfolio_button", type="primary"):
+    action_col, note_col = st.columns([1, 3])
+    with action_col:
+        analyze_clicked = st.button(
+            "Analyze portfolio",
+            key="analyze_portfolio_button",
+            type="primary",
+            width="stretch",
+        )
+    with note_col:
+        st.info("This analysis is educational context only. It is not a buy/sell instruction.")
+
+    if analyze_clicked:
         with st.spinner("Analyzing portfolio..."):
             try:
                 result = api_post(
@@ -503,19 +515,46 @@ def render_portfolio_tab(session_id: str) -> None:
                 st.error(f"Portfolio API failed: {exc}")
 
     result = st.session_state.get("portfolio_result")
-    render_agent_result(result)
     holdings = (result or {}).get("data", {}).get("holdings", [])
     portfolio_data = (result or {}).get("data", {})
     if portfolio_data:
-        col_value, col_gain, col_gain_pct = st.columns(3)
-        col_value.metric("Portfolio value", f"${portfolio_data.get('total_value', 0):,.2f}")
-        col_gain.metric("Gain / loss", f"${portfolio_data.get('total_gain_loss', 0):,.2f}")
-        col_gain_pct.metric("Gain / loss %", f"{portfolio_data.get('total_gain_loss_percent', 0):.2f}%")
+        st.markdown("### Portfolio health")
+        total_value = float(portfolio_data.get("total_value") or 0)
+        total_gain = float(portfolio_data.get("total_gain_loss") or 0)
+        total_gain_pct = float(portfolio_data.get("total_gain_loss_percent") or 0)
+        alert_count = len(portfolio_data.get("risk_alert_details") or [])
+        col_value, col_gain, col_gain_pct, col_alerts = st.columns(4)
+        col_value.metric("Portfolio value", f"${total_value:,.2f}")
+        col_gain.metric("Total gain / loss", f"${total_gain:,.2f}", delta=f"{total_gain_pct:+.2f}%")
+        col_gain_pct.metric("Return", f"{total_gain_pct:.2f}%")
+        col_alerts.metric("Risk alerts", alert_count)
+
+        with st.expander("Portfolio narrative", expanded=False):
+            st.markdown((result or {}).get("answer", portfolio_data.get("answer", "")))
 
     if holdings:
         df = pd.DataFrame(holdings)
-        st.markdown("### Holdings")
-        st.dataframe(df, width="stretch", hide_index=True)
+        df["allocation_percent"] = (
+            pd.to_numeric(df["market_value"], errors="coerce")
+            / max(float(portfolio_data.get("total_value") or 0), 1)
+            * 100
+        )
+        top_row = df.sort_values("allocation_percent", ascending=False).iloc[0]
+        worst_row = df.sort_values("gain_loss", ascending=True).iloc[0]
+
+        highlight_col1, highlight_col2, highlight_col3 = st.columns(3)
+        highlight_col1.metric(
+            "Largest holding",
+            str(top_row["ticker"]),
+            f"{float(top_row['allocation_percent']):.1f}% allocation",
+        )
+        highlight_col2.metric(
+            "Biggest loss",
+            str(worst_row["ticker"]),
+            f"${float(worst_row['gain_loss']):,.2f}",
+        )
+        highlight_col3.metric("Holdings", len(df))
+
         if {"ticker", "market_value"}.issubset(df.columns):
             pie_chart = (
                 alt.Chart(df)
@@ -538,6 +577,18 @@ def render_portfolio_tab(session_id: str) -> None:
                 )
                 .properties(height=320)
             )
+            exposure_chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("allocation_percent:Q", title="Allocation %"),
+                    y=alt.Y("ticker:N", sort="-x", title="Ticker"),
+                    color=alt.condition("datum.allocation_percent >= 30", alt.value("#f04438"), alt.value("#2e90fa")),
+                    tooltip=["ticker", "allocation_percent", "market_value"],
+                )
+                .properties(height=320)
+            )
+
             chart_col, gain_col = st.columns(2)
             with chart_col:
                 st.markdown("### Allocation")
@@ -545,6 +596,21 @@ def render_portfolio_tab(session_id: str) -> None:
             with gain_col:
                 st.markdown("### Profit / loss")
                 st.altair_chart(bar_chart, width="stretch")
+
+            st.markdown("### Concentration risk")
+            st.altair_chart(exposure_chart, width="stretch")
+
+        st.markdown("### Holdings detail")
+        display_cols = [
+            "ticker",
+            "quantity",
+            "average_buy_price",
+            "current_price",
+            "market_value",
+            "allocation_percent",
+            "gain_loss",
+        ]
+        st.dataframe(df[[col for col in display_cols if col in df.columns]], width="stretch", hide_index=True)
 
     risk_details = portfolio_data.get("risk_alert_details") or []
     if risk_details:
@@ -568,7 +634,10 @@ def render_portfolio_tab(session_id: str) -> None:
     if portfolio_data:
         st.markdown("### Recommendations")
         recs = build_portfolio_recommendations(portfolio_data, selected_user)
-        st.dataframe(pd.DataFrame(recs), width="stretch", hide_index=True)
+        for rec in recs:
+            with st.container(border=True):
+                st.markdown(f"**{rec['priority']} - {rec['recommendation']}**")
+                st.caption(rec["reason"])
         render_disclaimer()
 
 
@@ -577,20 +646,11 @@ def render_watchlist_tab(session_id: str) -> None:
     watchlist_user, selected_user = render_user_picker(session_id, "watchlist")
     render_user_summary(selected_user, watchlist_user)
 
-    col_watch, col_users = st.columns(2)
-    with col_watch:
-        if st.button("Show selected user's watchlist", key="show_watchlist_button", type="primary", width="stretch"):
-            try:
-                st.session_state["watchlist_result"] = api_get(f"/watchlist/{watchlist_user}")
-            except Exception as exc:
-                st.error(f"Watchlist API failed: {exc}")
-    with col_users:
-        if st.button("Refresh 50 seeded users", key="list_users_button", width="stretch"):
-            try:
-                st.session_state["users_result"] = api_get("/users")
-                st.success("Users refreshed")
-            except Exception as exc:
-                st.error(f"Users API failed: {exc}")
+    if st.button("Show selected user's watchlist", key="show_watchlist_button", type="primary", width="stretch"):
+        try:
+            st.session_state["watchlist_result"] = api_get(f"/watchlist/{watchlist_user}")
+        except Exception as exc:
+            st.error(f"Watchlist API failed: {exc}")
 
     watchlist_result = st.session_state.get("watchlist_result")
     if watchlist_result:
@@ -629,24 +689,6 @@ def render_watchlist_tab(session_id: str) -> None:
                 st.session_state["top10_quotes"] = []
     render_quote_table(st.session_state.get("top10_quotes", []), "Top 10 live stock prices")
 
-    users = (st.session_state.get("users_result") or {}).get("users", [])
-    if users:
-        st.markdown("### Seeded users")
-        users_df = pd.DataFrame(users)
-        st.dataframe(users_df, width="stretch", hide_index=True)
-        sector_counts = users_df.groupby("sector").size().reset_index(name="users")
-        sector_chart = (
-            alt.Chart(sector_counts)
-            .mark_bar()
-            .encode(
-                x=alt.X("sector:N", sort="-y", title="Sector"),
-                y=alt.Y("users:Q", title="Users"),
-                tooltip=["sector", "users"],
-            )
-            .properties(height=320)
-        )
-        st.markdown("### Users by sector")
-        st.altair_chart(sector_chart, width="stretch")
     render_disclaimer()
 
 
