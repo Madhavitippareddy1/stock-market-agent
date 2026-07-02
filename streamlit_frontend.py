@@ -41,6 +41,7 @@ def init_state() -> None:
         "portfolio_result": None,
         "watchlist_result": None,
         "users_result": None,
+        "observability_result": None,
         "chatbot_result": None,
         "last_agent_call": "None",
     }
@@ -150,11 +151,11 @@ def render_stock_history_chart(result: dict[str, Any]) -> None:
         .properties(height=360)
     )
     st.markdown("### 5-year monthly close chart")
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
     with st.expander("Monthly history table", expanded=False):
         table = df.copy()
         table["month"] = table["month"].dt.strftime("%Y-%m")
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(table, width="stretch", hide_index=True)
 
 
 def render_agent_result(result: dict[str, Any] | None) -> None:
@@ -189,6 +190,67 @@ def render_chat_history(session_id: str, limit: int = 8) -> None:
                 st.caption(message["created_at"])
 
 
+def load_seed_users() -> list[dict[str, Any]]:
+    if not st.session_state.get("users_result"):
+        try:
+            st.session_state["users_result"] = api_get("/users")
+        except Exception:
+            st.session_state["users_result"] = {"users": []}
+    return st.session_state.get("users_result", {}).get("users", [])
+
+
+def user_label(user: dict[str, Any]) -> str:
+    name = user.get("display_name") or "Unknown user"
+    user_id = user.get("user_id") or ""
+    sector = user.get("sector") or "sector"
+    return f"{name} - {user_id} ({sector})"
+
+
+def render_user_picker(default_user_id: str, key_prefix: str) -> tuple[str, dict[str, Any] | None]:
+    users = load_seed_users()
+    if not users:
+        manual_user = st.text_input(
+            "User ID",
+            value=default_user_id,
+            key=f"{key_prefix}_manual_user",
+        )
+        return manual_user, None
+
+    options = [user_label(user) for user in users]
+    default_index = 0
+    for index, user in enumerate(users):
+        if user.get("user_id") == default_user_id:
+            default_index = index
+            break
+    selected_label = st.selectbox(
+        "Select seeded user",
+        options=options,
+        index=default_index,
+        key=f"{key_prefix}_user_select",
+    )
+    selected_user = users[options.index(selected_label)]
+    manual_user = st.text_input(
+        "Or enter User ID manually",
+        value=selected_user.get("user_id", default_user_id),
+        key=f"{key_prefix}_manual_user",
+    )
+    if manual_user and manual_user != selected_user.get("user_id"):
+        return manual_user, None
+    return selected_user.get("user_id", default_user_id), selected_user
+
+
+def render_user_summary(user: dict[str, Any] | None, user_id: str) -> None:
+    if not user:
+        st.caption(f"Selected user ID: {user_id}")
+        return
+    col_name, col_id, col_sector, col_risk = st.columns(4)
+    col_name.metric("User name", user.get("display_name", "Unknown"))
+    col_id.metric("User ID", user.get("user_id", user_id))
+    col_sector.metric("Sector", user.get("sector", "Unknown"))
+    col_risk.metric("Risk", user.get("risk_profile", "Unknown"))
+    st.caption(user.get("investment_goal", ""))
+
+
 def render_sidebar() -> str:
     with st.sidebar:
         st.header("Stock Chatbot")
@@ -197,7 +259,7 @@ def render_sidebar() -> str:
 
         col_clear, col_refresh = st.columns(2)
         with col_clear:
-            if st.button("Clear", key="clear_chat_button", use_container_width=True):
+            if st.button("Clear", key="clear_chat_button", width="stretch"):
                 try:
                     api_delete(f"/chat/{session_id}")
                     st.session_state["chatbot_result"] = None
@@ -206,7 +268,7 @@ def render_sidebar() -> str:
                 except Exception as exc:
                     st.error(f"Clear failed: {exc}")
         with col_refresh:
-            if st.button("Refresh", key="refresh_chat_button", use_container_width=True):
+            if st.button("Refresh", key="refresh_chat_button", width="stretch"):
                 st.rerun()
 
         try:
@@ -223,7 +285,7 @@ def render_sidebar() -> str:
             key="sidebar_prompt",
             height=95,
         )
-        if st.button("Send", key="sidebar_send_button", type="primary", use_container_width=True):
+        if st.button("Send", key="sidebar_send_button", type="primary", width="stretch"):
             if not prompt.strip():
                 st.warning("Please enter a question.")
             else:
@@ -244,7 +306,7 @@ def render_sidebar() -> str:
 
         with st.expander("Backend", expanded=False):
             st.code(API_BASE_URL)
-            if st.button("Health check", key="sidebar_health_button", use_container_width=True):
+            if st.button("Health check", key="sidebar_health_button", width="stretch"):
                 try:
                     st.success(api_get("/health"))
                 except Exception as exc:
@@ -308,8 +370,10 @@ def render_research_tab(session_id: str) -> None:
 
 def render_portfolio_tab(session_id: str) -> None:
     st.markdown("### Portfolio dashboard")
-    portfolio_user = st.text_input("Portfolio user ID", value=session_id, key="portfolio_user")
-    if st.button("Analyze portfolio", key="analyze_portfolio_button"):
+    portfolio_user, selected_user = render_user_picker(session_id, "portfolio")
+    render_user_summary(selected_user, portfolio_user)
+
+    if st.button("Analyze portfolio", key="analyze_portfolio_button", type="primary"):
         with st.spinner("Analyzing portfolio..."):
             try:
                 result = api_post(
@@ -324,12 +388,19 @@ def render_portfolio_tab(session_id: str) -> None:
     result = st.session_state.get("portfolio_result")
     render_agent_result(result)
     holdings = (result or {}).get("data", {}).get("holdings", [])
+    portfolio_data = (result or {}).get("data", {})
+    if portfolio_data:
+        col_value, col_gain, col_gain_pct = st.columns(3)
+        col_value.metric("Portfolio value", f"${portfolio_data.get('total_value', 0):,.2f}")
+        col_gain.metric("Gain / loss", f"${portfolio_data.get('total_gain_loss', 0):,.2f}")
+        col_gain_pct.metric("Gain / loss %", f"{portfolio_data.get('total_gain_loss_percent', 0):.2f}%")
+
     if holdings:
         df = pd.DataFrame(holdings)
         st.markdown("### Holdings")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
         if {"ticker", "market_value"}.issubset(df.columns):
-            pie = (
+            pie_chart = (
                 alt.Chart(df)
                 .mark_arc()
                 .encode(
@@ -339,48 +410,186 @@ def render_portfolio_tab(session_id: str) -> None:
                 )
                 .properties(height=350)
             )
-            st.altair_chart(pie, use_container_width=True)
+            bar_chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("ticker:N", title="Ticker"),
+                    y=alt.Y("gain_loss:Q", title="Gain / loss"),
+                    color=alt.condition("datum.gain_loss >= 0", alt.value("#12b76a"), alt.value("#f04438")),
+                    tooltip=["ticker", "quantity", "average_buy_price", "current_price", "market_value", "gain_loss"],
+                )
+                .properties(height=320)
+            )
+            chart_col, gain_col = st.columns(2)
+            with chart_col:
+                st.markdown("### Allocation")
+                st.altair_chart(pie_chart, width="stretch")
+            with gain_col:
+                st.markdown("### Profit / loss")
+                st.altair_chart(bar_chart, width="stretch")
+
+    risk_details = portfolio_data.get("risk_alert_details") or []
+    if risk_details:
+        st.markdown("### Risk alerts")
+        risk_df = pd.DataFrame(risk_details)
+        st.dataframe(risk_df, width="stretch", hide_index=True)
 
 
 def render_watchlist_tab(session_id: str) -> None:
     st.markdown("### My Watchlist")
+    watchlist_user, selected_user = render_user_picker(session_id, "watchlist")
+    render_user_summary(selected_user, watchlist_user)
+
     col_watch, col_users = st.columns(2)
     with col_watch:
-        if st.button("Show my saved watchlist", key="show_watchlist_button", use_container_width=True):
+        if st.button("Show selected user's watchlist", key="show_watchlist_button", type="primary", width="stretch"):
             try:
-                st.session_state["watchlist_result"] = api_get(f"/watchlist/{session_id}")
+                st.session_state["watchlist_result"] = api_get(f"/watchlist/{watchlist_user}")
             except Exception as exc:
                 st.error(f"Watchlist API failed: {exc}")
     with col_users:
-        if st.button("List seeded users", key="list_users_button", use_container_width=True):
+        if st.button("Refresh 50 seeded users", key="list_users_button", width="stretch"):
             try:
                 st.session_state["users_result"] = api_get("/users")
+                st.success("Users refreshed")
             except Exception as exc:
                 st.error(f"Users API failed: {exc}")
 
-    if st.session_state.get("watchlist_result"):
-        st.json(st.session_state["watchlist_result"])
+    watchlist_result = st.session_state.get("watchlist_result")
+    if watchlist_result:
+        st.markdown("### Watchlist stocks")
+        tickers = watchlist_result.get("watchlist", [])
+        if tickers:
+            ticker_df = pd.DataFrame(
+                [{"position": index + 1, "ticker": ticker} for index, ticker in enumerate(tickers)]
+            )
+            st.dataframe(ticker_df, width="stretch", hide_index=True)
+            st.bar_chart(ticker_df.set_index("ticker")["position"], width="stretch")
+        st.caption(watchlist_result.get("answer", ""))
 
     users = (st.session_state.get("users_result") or {}).get("users", [])
     if users:
         st.markdown("### Seeded users")
-        st.dataframe(pd.DataFrame(users), use_container_width=True, hide_index=True)
+        users_df = pd.DataFrame(users)
+        st.dataframe(users_df, width="stretch", hide_index=True)
+        sector_counts = users_df.groupby("sector").size().reset_index(name="users")
+        sector_chart = (
+            alt.Chart(sector_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("sector:N", sort="-y", title="Sector"),
+                y=alt.Y("users:Q", title="Users"),
+                tooltip=["sector", "users"],
+            )
+            .properties(height=320)
+        )
+        st.markdown("### Users by sector")
+        st.altair_chart(sector_chart, width="stretch")
     render_disclaimer()
 
 
 def render_observability_tab() -> None:
     st.markdown("### Observability")
-    if st.button("Refresh observability summary", key="refresh_observability_button"):
+    if st.button("Refresh observability summary", key="refresh_observability_button", type="primary"):
         try:
             st.session_state["observability_result"] = api_get("/observability/summary")
         except Exception as exc:
             st.error(f"Observability API failed: {exc}")
-    if "observability_result" not in st.session_state:
+    if not st.session_state.get("observability_result"):
         try:
             st.session_state["observability_result"] = api_get("/observability/summary")
         except Exception:
             st.session_state["observability_result"] = {}
-    st.json(st.session_state.get("observability_result", {}))
+    summary = st.session_state.get("observability_result", {})
+
+    col_req, col_err, col_lat, col_cost = st.columns(4)
+    col_req.metric("Requests", summary.get("request_count", 0))
+    col_err.metric("Error rate", f"{summary.get('error_rate', 0) * 100:.2f}%")
+    col_lat.metric("Avg latency", f"{summary.get('avg_latency_ms', 0):.0f} ms")
+    col_cost.metric("LLM cost", f"${summary.get('total_cost_usd', 0):.6f}")
+
+    col_tokens, col_llm, col_p50, col_p95 = st.columns(4)
+    col_tokens.metric("Tokens", summary.get("total_tokens", 0))
+    col_llm.metric("LLM calls", summary.get("llm_call_count", 0))
+    col_p50.metric("P50 latency", f"{summary.get('p50_latency_ms', 0):.0f} ms")
+    col_p95.metric("P95 latency", f"{summary.get('p95_latency_ms', 0):.0f} ms")
+
+    events = summary.get("events", [])
+    if events:
+        events_df = pd.DataFrame(events)
+        st.markdown("### Recent events")
+        visible_cols = [
+            col
+            for col in [
+                "timestamp",
+                "event_type",
+                "agent",
+                "route",
+                "question",
+                "model_id",
+                "latency_ms",
+                "total_tokens",
+                "cost_usd",
+                "success",
+                "error",
+            ]
+            if col in events_df.columns
+        ]
+        st.dataframe(events_df[visible_cols].tail(100), width="stretch", hide_index=True)
+
+        request_df = events_df[events_df.get("event_type") == "request"] if "event_type" in events_df else pd.DataFrame()
+        if not request_df.empty and {"agent", "latency_ms"}.issubset(request_df.columns):
+            latency_chart = (
+                alt.Chart(request_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("agent:N", title="Agent"),
+                    y=alt.Y("mean(latency_ms):Q", title="Average latency ms"),
+                    tooltip=["agent", "mean(latency_ms)"],
+                )
+                .properties(height=300)
+            )
+            st.markdown("### Average latency by agent")
+            st.altair_chart(latency_chart, width="stretch")
+
+        ragas_rows: list[dict[str, Any]] = []
+        for event in events:
+            metadata = event.get("metadata") or {}
+            ragas = metadata.get("ragas") or event.get("ragas")
+            if isinstance(ragas, dict):
+                for score in ragas.get("scores", []):
+                    ragas_rows.append(
+                        {
+                            "timestamp": event.get("timestamp"),
+                            "question": event.get("question"),
+                            "score": score.get("name"),
+                            "value": score.get("value"),
+                            "passed": ragas.get("passed"),
+                            "comment": score.get("comment"),
+                        }
+                    )
+        st.markdown("### RAGAS evaluation")
+        if ragas_rows:
+            ragas_df = pd.DataFrame(ragas_rows)
+            st.dataframe(ragas_df.tail(50), width="stretch", hide_index=True)
+            ragas_chart = (
+                alt.Chart(ragas_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("score:N", title="RAGAS metric"),
+                    y=alt.Y("mean(value):Q", title="Average score", scale=alt.Scale(domain=[0, 1])),
+                    color=alt.Color("score:N", legend=None),
+                    tooltip=["score", "mean(value)"],
+                )
+                .properties(height=300)
+            )
+            st.altair_chart(ragas_chart, width="stretch")
+        else:
+            st.info("No RAGAS scores found yet. Run a RAG report question/upload to generate RAGAS metrics.")
+
+    with st.expander("Raw observability JSON", expanded=False):
+        st.json(summary)
 
 
 def render_settings_tab() -> None:
