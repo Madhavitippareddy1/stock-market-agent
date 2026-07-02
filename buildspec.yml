@@ -4,7 +4,8 @@ env:
   variables:
     AWS_REGION: eu-west-2
     ECR_REPOSITORY_NAME: dev-dstrmaysam-stock-market-agent-repo
-    CONTAINER_NAME: stock-market-agent
+    API_CONTAINER_NAME: stock-market-agent-api
+    STREAMLIT_CONTAINER_NAME: stock-market-agent-streamlit
 
 phases:
   pre_build:
@@ -14,21 +15,29 @@ phases:
       - REPOSITORY_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY_NAME
       - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
       - IMAGE_TAG=$(echo ${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest} | cut -c 1-12)
+      - API_CONTAINER_NAME=${API_CONTAINER_NAME:-stock-market-agent-api}
+      - STREAMLIT_CONTAINER_NAME=${STREAMLIT_CONTAINER_NAME:-stock-market-agent-streamlit}
   build:
     commands:
       - echo Running tests
       - pip install --upgrade pip
       - pip install ".[dev]"
       - pytest
-      - echo Building Docker image
-      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
-      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:latest
+      - echo Building FastAPI backend image
+      - docker build -f Dockerfile.api -t $REPOSITORY_URI:api-$IMAGE_TAG .
+      - docker tag $REPOSITORY_URI:api-$IMAGE_TAG $REPOSITORY_URI:api-latest
+      - echo Building Streamlit frontend image
+      - docker build -f Dockerfile.streamlit -t $REPOSITORY_URI:streamlit-$IMAGE_TAG .
+      - docker tag $REPOSITORY_URI:streamlit-$IMAGE_TAG $REPOSITORY_URI:streamlit-latest
   post_build:
     commands:
-      - echo Pushing Docker image
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - docker push $REPOSITORY_URI:latest
-      - printf '[{"name":"%s","imageUri":"%s"}]' "$CONTAINER_NAME" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+      - echo Pushing FastAPI backend image
+      - docker push $REPOSITORY_URI:api-$IMAGE_TAG
+      - docker push $REPOSITORY_URI:api-latest
+      - echo Pushing Streamlit frontend image
+      - docker push $REPOSITORY_URI:streamlit-$IMAGE_TAG
+      - docker push $REPOSITORY_URI:streamlit-latest
+      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' "$API_CONTAINER_NAME" "$REPOSITORY_URI:api-$IMAGE_TAG" "$STREAMLIT_CONTAINER_NAME" "$REPOSITORY_URI:streamlit-$IMAGE_TAG" > imagedefinitions.json
 
 artifacts:
   files:

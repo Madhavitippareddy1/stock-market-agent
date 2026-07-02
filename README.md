@@ -1,6 +1,6 @@
 # Stock Market Agent
 
-A Streamlit and AWS based multi-agent stock research application.
+A FastAPI backend plus Streamlit frontend multi-agent stock research application.
 
 This project is the clean new version of the stock agent platform. It is
 designed to use a shared MCP server for tools, AWS for deployment, and
@@ -124,6 +124,71 @@ Balancer or API Gateway/custom domain.
 
 ## Local run
 
+### Option 1: run backend and frontend separately
+
+Terminal 1 - FastAPI backend:
+
+```bash
+uv sync
+copy .env.example .env
+uv run uvicorn stock_market_agent.api:app --host 0.0.0.0 --port 8002 --reload
+```
+
+Terminal 2 - Streamlit frontend:
+
+```bash
+set API_BASE_URL=http://localhost:8002
+uv run streamlit run streamlit_frontend.py --server.port 8502
+```
+
+FastAPI endpoints:
+
+```text
+GET  http://localhost:8002/health
+GET  http://localhost:8002/config
+POST http://localhost:8002/research
+POST http://localhost:8002/research/upload
+POST http://localhost:8002/portfolio/analyze
+GET  http://localhost:8002/watchlist/{user_id}
+GET  http://localhost:8002/chat/{session_id}
+```
+
+Streamlit UI:
+
+```text
+http://localhost:8502
+```
+
+### Option 2: run with Docker Compose
+
+This starts two containers: one for FastAPI and one for Streamlit.
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Docker URLs:
+
+```text
+FastAPI:   http://localhost:8002/health
+Streamlit: http://localhost:8502
+```
+
+If your shared MCP server runs locally on port `8001`, Docker uses
+`http://host.docker.internal:8001/sse` by default. To point Docker to another
+MCP server:
+
+```bash
+set DOCKER_MCP_SERVER_URL=http://your-mcp-server/sse
+docker compose up -d
+```
+
+### Legacy single-process Streamlit app
+
+The older all-in-one Streamlit app is still available while the split version is
+being validated:
+
 ```bash
 uv sync
 copy .env.example .env
@@ -157,6 +222,14 @@ uv run pytest
 ```
 
 ## Build Docker image
+
+Split backend/frontend images:
+
+```bash
+docker compose build
+```
+
+Legacy single Streamlit image:
 
 ```bash
 docker build -t stock-market-agent .

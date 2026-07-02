@@ -42,5 +42,13 @@
   {
     "ParameterKey": "ContainerName",
     "ParameterValue": "stock-market-agent"
+  },
+  {
+    "ParameterKey": "ApiContainerName",
+    "ParameterValue": "stock-market-agent-api"
+  },
+  {
+    "ParameterKey": "StreamlitContainerName",
+    "ParameterValue": "stock-market-agent-streamlit"
   }
 ]

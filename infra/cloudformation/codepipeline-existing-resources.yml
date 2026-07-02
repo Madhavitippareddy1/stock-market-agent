@@ -35,6 +35,13 @@ Parameters:
   ContainerName:
     Type: String
     Default: stock-market-agent
+    Description: Legacy single-container name. Kept for backward-compatible stack updates.
+  ApiContainerName:
+    Type: String
+    Default: stock-market-agent-api
+  StreamlitContainerName:
+    Type: String
+    Default: stock-market-agent-streamlit
 
 Resources:
   ArtifactBucket:
@@ -141,6 +148,10 @@ Resources:
             Value: !Ref EcrRepositoryName
           - Name: CONTAINER_NAME
             Value: !Ref ContainerName
+          - Name: API_CONTAINER_NAME
+            Value: !Ref ApiContainerName
+          - Name: STREAMLIT_CONTAINER_NAME
+            Value: !Ref StreamlitContainerName
       LogsConfig:
         CloudWatchLogs:
           GroupName: !Ref CodeBuildLogGroup
