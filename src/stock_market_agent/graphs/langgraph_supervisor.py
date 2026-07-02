@@ -147,8 +147,35 @@ class LangGraphSupervisor:
         question = state["question"].lower()
         uploaded_file = state.get("uploaded_file")
 
-        if uploaded_file is not None or any(word in question for word in ["report", "pdf", "document"]):
+        stock_performance_terms = [
+            "5 year",
+            "5-year",
+            "five year",
+            "five-year",
+            "3 year",
+            "3-year",
+            "three year",
+            "three-year",
+            "monthly",
+            "history",
+            "performance",
+            "profit",
+            "loss",
+            "stock report",
+            "stock analysis",
+            "stock analyse",
+        ]
+        document_terms = ["pdf", "document", "uploaded", "upload", "file"]
+
+        # Uploaded files and explicit document/PDF questions should stay in RAG.
+        # But natural-language market questions such as "amazon stock 5 years report"
+        # are asking for price/performance history, so route them to Stock Agent.
+        if uploaded_file is not None:
             route: RouteName = "rag"
+        elif any(term in question for term in stock_performance_terms):
+            route = "stock"
+        elif any(word in question for word in ["report", *document_terms]):
+            route = "rag"
         elif any(word in question for word in ["portfolio", "holding", "risk alert"]):
             route = "portfolio"
         elif any(word in question for word in ["watchlist", "risk profile", "my profile"]):

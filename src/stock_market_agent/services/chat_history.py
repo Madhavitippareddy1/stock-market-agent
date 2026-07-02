@@ -48,9 +48,15 @@ class ChatHistoryService:
         database_username = settings.database_username
         database_password = settings.database_password
         if settings.database_secret_arn and (not database_username or not database_password):
-            secret = load_database_secret(settings.database_secret_arn, settings.aws_region)
-            database_username = database_username or secret.get("username")
-            database_password = database_password or secret.get("password")
+            try:
+                secret = load_database_secret(settings.database_secret_arn, settings.aws_region)
+                database_username = database_username or secret.get("username")
+                database_password = database_password or secret.get("password")
+            except Exception:
+                # Local development should not crash when AWS SSO/session credentials expire.
+                # If the secret cannot be read, fall back to SQLite chat history.
+                database_username = None
+                database_password = None
 
         if settings.database_host and database_username and database_password:
             return PostgresChatHistoryService(
