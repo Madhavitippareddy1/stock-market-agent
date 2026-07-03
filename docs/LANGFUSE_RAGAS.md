@@ -115,3 +115,29 @@ Current validation result after implementation:
 ```text
 16 passed
 ```
+## Publishing prompt versions to Langfuse
+
+System prompts and user prompt templates are version-controlled in:
+
+```text
+data/prompts/prompts.json
+```
+
+To publish the local prompt catalogue to Langfuse Prompt Management, run:
+
+```bash
+uv run python scripts/publish_langfuse_prompts.py
+```
+
+The script creates chat prompts named with the `stock-market-agent/` prefix, for example:
+
+- `stock-market-agent/investment_research_summary`
+- `stock-market-agent/trajectory_judge`
+
+Each semantic version from the JSON catalogue is added as a Langfuse label, for example `v1.2.0`. The active prompt version also receives `latest` and the active environment label, for example `production`.
+
+Use dry-run mode before publishing changes:
+
+```bash
+uv run python scripts/publish_langfuse_prompts.py --dry-run
+```
