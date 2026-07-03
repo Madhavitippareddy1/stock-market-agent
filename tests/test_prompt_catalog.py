@@ -7,7 +7,7 @@ def test_prompt_catalog_loads_active_investment_prompt():
 
     prompt = catalog.get("investment_research_summary")
 
-    assert prompt.version == "v1.0.0"
+    assert prompt.version == "v1.2.0"
     assert "{question}" in prompt.text
     assert prompt.system_prompt
-    assert catalog.active_versions()["investment_research_summary"] == "v1.0.0"
+    assert catalog.active_versions()["investment_research_summary"] == "v1.2.0"
