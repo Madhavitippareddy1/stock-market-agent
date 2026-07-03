@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
+from stock_market_agent import api as api_module
 from stock_market_agent.api import app
 
 
@@ -32,6 +35,51 @@ def test_research_endpoint_returns_agent_result():
     payload = response.json()
     assert payload["agent"] in {"Stock Agent", "Investment Agent", "RAG Agent", "Portfolio Agent", "User Agent"}
     assert payload["answer"]
+
+
+def test_research_endpoint_can_skip_chat_history(monkeypatch):
+    class DummyChatHistory:
+        def __init__(self):
+            self.context_requested = False
+            self.saved_messages = []
+
+        def build_context(self, user_id: str) -> str:
+            self.context_requested = True
+            return f"old context for {user_id}"
+
+        def add_message(self, user_id: str, role: str, content: str) -> None:
+            self.saved_messages.append((user_id, role, content))
+
+    class DummySupervisor:
+        def __init__(self):
+            self.received_context = None
+
+        def run(self, question: str, user_id: str, conversation_context: str) -> dict:
+            self.received_context = conversation_context
+            return {"agent": "Stock Agent", "answer": f"Answer for {question}", "sources": []}
+
+    chat_history = DummyChatHistory()
+    supervisor = DummySupervisor()
+    monkeypatch.setattr(
+        api_module,
+        "_services",
+        SimpleNamespace(chat_history=chat_history, supervisor=supervisor),
+    )
+
+    response = client.post(
+        "/research",
+        json={
+            "question": "Walmart stock price",
+            "user_id": "stock-chat",
+            "save_history": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["agent"] == "Stock Agent"
+    assert chat_history.context_requested is False
+    assert chat_history.saved_messages == []
+    assert supervisor.received_context == ""
 
 
 def test_portfolio_endpoint_returns_result():

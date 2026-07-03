@@ -31,6 +31,7 @@ class ResearchRequest(BaseModel):
     question: str
     user_id: str = "demo-user"
     conversation_context: str = ""
+    save_history: bool = True
 
 
 class PortfolioRequest(BaseModel):
@@ -145,17 +146,21 @@ def config() -> dict[str, Any]:
 @app.post("/research")
 def research(request: ResearchRequest) -> dict[str, Any]:
     services = get_services()
-    history_context = services.chat_history.build_context(request.user_id)
+    history_context = (
+        services.chat_history.build_context(request.user_id) if request.save_history else ""
+    )
     combined_context = "\n".join(
         item for item in [request.conversation_context, history_context] if item
     )
-    services.chat_history.add_message(request.user_id, "user", request.question)
+    if request.save_history:
+        services.chat_history.add_message(request.user_id, "user", request.question)
     result = services.supervisor.run(
         question=request.question,
         user_id=request.user_id,
         conversation_context=combined_context,
     )
-    services.chat_history.add_message(request.user_id, "assistant", result.get("answer", ""))
+    if request.save_history:
+        services.chat_history.add_message(request.user_id, "assistant", result.get("answer", ""))
     return result
 
 

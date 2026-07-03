@@ -46,6 +46,7 @@ def init_state() -> None:
         "chatbot_result": None,
         "last_agent_call": "None",
         "last_agent_flow": None,
+        "chatbot_process_history": [],
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
@@ -110,13 +111,6 @@ def apply_styles() -> None:
             border-radius: 0.75rem;
             margin-top: 1rem;
             line-height: 1.55;
-        }
-        .chat-panel {
-            background: #ffffff;
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 1rem;
-            padding: 1rem;
-            margin: 0.75rem 0 1rem 0;
         }
         .chat-history-card {
             background: #1d2939;
@@ -272,6 +266,62 @@ def render_compact_chat_history(session_id: str, limit: int = 6) -> None:
         )
 
 
+def fetch_chat_messages(session_id: str, limit: int = 20) -> list[dict[str, Any]]:
+    history = api_get(f"/chat/{session_id}", limit=limit)
+    return history.get("messages", [])
+
+
+def render_chat_messages(messages: list[dict[str, Any]], limit: int = 8) -> None:
+    if not messages:
+        st.caption("No chat history yet.")
+        return
+
+    for message in messages[-limit:]:
+        role = "You" if message.get("role") == "user" else "Assistant"
+        content = str(message.get("content", ""))
+        if len(content) > 240:
+            content = f"{content[:240].rstrip()}..."
+        st.markdown(
+            f"""
+            <div class="chat-history-card">
+                <div class="chat-role">{html.escape(role)}</div>
+                <p>{html.escape(content)}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_stock_question_history(messages: list[dict[str, Any]], limit: int = 6) -> None:
+    stock_terms = (
+        "stock",
+        "price",
+        "share",
+        "ticker",
+        "compare",
+        "5-year",
+        "5 year",
+        "history",
+        "report",
+        "invest",
+        "buy",
+        "sell",
+    )
+    questions = [
+        str(message.get("content", ""))
+        for message in messages
+        if message.get("role") == "user"
+        and any(term in str(message.get("content", "")).lower() for term in stock_terms)
+    ]
+    if not questions:
+        st.caption("No stock questions saved yet.")
+        return
+
+    for question in questions[-limit:]:
+        display_question = question if len(question) <= 140 else f"{question[:140].rstrip()}..."
+        st.markdown(f"- {html.escape(display_question)}")
+
+
 def get_agent_flow(result: dict[str, Any] | None) -> dict[str, Any] | None:
     if not result:
         return None
@@ -341,6 +391,21 @@ def render_agent_flow(result: dict[str, Any] | None, title: str = "Supervisor an
         with st.expander("Detailed route steps", expanded=False):
             for step in steps:
                 st.write(f"- {step}")
+
+
+def render_chatbot_process_history(limit: int = 5) -> None:
+    process_history = st.session_state.get("chatbot_process_history", [])
+    if not process_history:
+        st.caption("No request process captured yet.")
+        return
+
+    recent_items = process_history[-limit:]
+    for index, item in enumerate(recent_items, start=1):
+        question = str(item.get("question", "Question"))
+        agent = item.get("agent", "Agent")
+        label = question if len(question) <= 54 else f"{question[:54].rstrip()}..."
+        with st.expander(f"{index}. {label} -> {agent}", expanded=index == len(recent_items)):
+            render_agent_flow(item.get("result"), title="Process for this request")
 
 
 def load_seed_users() -> list[dict[str, Any]]:
@@ -588,26 +653,28 @@ def render_sidebar() -> str:
     chat_session_id = "stock-chat"
     with st.sidebar:
         st.header("Stock Chatbot")
-        st.caption("Ask stock questions, compare companies, or request portfolio/risk help.")
+        st.caption("Ask stock questions, compare companies, or request portfolio/risk help. History is saved for this chatbot.")
 
-        if st.button("Clear chat", key="clear_chat_button", width="stretch"):
+        if st.button("Clear", key="clear_chat_button", width="stretch"):
             try:
                 api_delete(f"/chat/{chat_session_id}")
-                st.session_state["chatbot_result"] = None
-                st.session_state["last_agent_call"] = "None"
-                st.session_state["last_agent_flow"] = None
-                st.success("Chat cleared")
-                st.rerun()
             except Exception as exc:
-                st.error(f"Clear failed: {exc}")
+                st.warning(f"Saved history clear failed: {exc}")
+            st.session_state["chatbot_result"] = None
+            st.session_state["last_agent_call"] = "None"
+            st.session_state["last_agent_flow"] = None
+            st.session_state["chatbot_process_history"] = []
+            st.rerun()
 
         try:
-            messages = api_get(f"/chat/{chat_session_id}", limit=50).get("messages", [])
+            messages = fetch_chat_messages(chat_session_id, limit=30)
         except Exception:
             messages = []
-        st.caption(f"{len(messages)} saved messages | Last agent: {st.session_state.get('last_agent_call', 'None')}")
 
-        st.markdown('<div class="chat-panel">', unsafe_allow_html=True)
+        user_question_count = len([message for message in messages if message.get("role") == "user"])
+        st.caption(
+            f"Saved questions: {user_question_count} | Last agent: {st.session_state.get('last_agent_call', 'None')}"
+        )
         prompt = st.text_area(
             "Chat",
             placeholder="Example: compare Apple and Meta, Amazon 5-year stock report, or analyze risk",
@@ -620,23 +687,42 @@ def render_sidebar() -> str:
             else:
                 with st.spinner("Calling supervisor agent..."):
                     try:
-                        result = api_post("/research", {"question": prompt, "user_id": chat_session_id})
+                        result = api_post(
+                            "/research",
+                            {
+                                "question": prompt,
+                                "user_id": chat_session_id,
+                                "save_history": True,
+                            },
+                        )
                         st.session_state["chatbot_result"] = result
                         st.session_state["last_agent_call"] = result.get("agent", "Agent")
                         st.session_state["last_agent_flow"] = get_agent_flow(result)
+                        st.session_state["chatbot_process_history"].append(
+                            {
+                                "question": prompt,
+                                "agent": result.get("agent", "Agent"),
+                                "result": result,
+                            }
+                        )
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Chat request failed: {exc}")
-        st.markdown("</div>", unsafe_allow_html=True)
 
         if st.session_state.get("chatbot_result"):
             with st.expander("Latest answer", expanded=True):
                 render_compact_agent_result(st.session_state["chatbot_result"])
-            with st.expander("Agent flow", expanded=False):
+            with st.expander("Request process", expanded=False):
                 render_agent_flow(st.session_state["chatbot_result"], title="Flow for latest chat")
 
-        st.markdown("### Chat history")
-        render_compact_chat_history(chat_session_id, limit=6)
+        with st.expander("Stock history", expanded=False):
+            render_stock_question_history(messages, limit=6)
+
+        with st.expander("Chat history", expanded=False):
+            render_chat_messages(messages, limit=8)
+
+        with st.expander("Process history", expanded=False):
+            render_chatbot_process_history(limit=5)
 
     return "demo-user"
 
@@ -1052,7 +1138,7 @@ st.markdown(
     """
     <div class="hero-card">
         <h3>Stock Market Agent</h3>
-        <p>Research stocks, review portfolio risk, analyze reports, and keep chat history in one clean dashboard.</p>
+        <p>Research stocks, review portfolio risk, and analyze reports in one clean dashboard.</p>
     </div>
     """,
     unsafe_allow_html=True,
