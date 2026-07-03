@@ -33,3 +33,12 @@ def test_chat_history_build_context(tmp_path):
 
     assert "user: compare Apple and Meta" in context
     assert "assistant: Compared AAPL and META" in context
+
+def test_chat_history_returns_latest_messages_in_chronological_order(tmp_path):
+    service = ChatHistoryService(tmp_path / "chat.sqlite3")
+    for index in range(5):
+        service.add_message("session-1", "user", f"message-{index}")
+
+    messages = service.get_messages("session-1", limit=3)
+
+    assert [message.content for message in messages] == ["message-2", "message-3", "message-4"]

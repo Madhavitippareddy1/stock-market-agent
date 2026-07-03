@@ -107,10 +107,14 @@ class ChatHistoryService:
             rows = connection.execute(
                 """
                 SELECT role, content, created_at
-                FROM chat_messages
-                WHERE session_id = ?
+                FROM (
+                    SELECT role, content, created_at, id
+                    FROM chat_messages
+                    WHERE session_id = ?
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ?
+                ) latest_messages
                 ORDER BY created_at ASC, id ASC
-                LIMIT ?
                 """,
                 (session_id, limit),
             ).fetchall()
@@ -194,10 +198,14 @@ class PostgresChatHistoryService:
             rows = connection.execute(
                 """
                 SELECT role, content, created_at::TEXT
-                FROM chat_messages
-                WHERE session_id = %s
+                FROM (
+                    SELECT role, content, created_at, id
+                    FROM chat_messages
+                    WHERE session_id = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT %s
+                ) latest_messages
                 ORDER BY created_at ASC, id ASC
-                LIMIT %s
                 """,
                 (session_id, limit),
             ).fetchall()
