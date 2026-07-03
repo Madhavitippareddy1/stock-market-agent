@@ -233,15 +233,16 @@ def watchlist(user_id: str) -> dict[str, Any]:
         marker in answer for marker in ["unavailable", "timed out", "not configured", "returned no content"]
     ):
         profile = local_user_context(user_id, "show my watchlist")
+        local_watchlist = profile.get("watchlist") or (profile.get("user") or {}).get("watchlist", [])
         return {
             "user_id": user_id,
-            "watchlist": (profile.get("user") or {}).get("watchlist", []),
+            "watchlist": local_watchlist,
             "answer": profile.get("answer", ""),
             "sources": profile.get("sources", ["Local fallback users"]),
         }
     if not result.get("watchlist"):
         profile = local_user_context(user_id, "show my watchlist")
-        local_watchlist = (profile.get("user") or {}).get("watchlist", [])
+        local_watchlist = profile.get("watchlist") or (profile.get("user") or {}).get("watchlist", [])
         if local_watchlist:
             return {
                 "user_id": user_id,
