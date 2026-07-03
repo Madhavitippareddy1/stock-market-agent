@@ -57,3 +57,53 @@ def test_langfuse_observability_disabled_without_credentials():
         user_id="demo-user",
     ) as span:
         assert span is None
+
+class FakeLangfuseObservation:
+    def __init__(self):
+        self.updated = None
+        self.ended = False
+
+    def update(self, **kwargs):
+        self.updated = kwargs
+        return self
+
+    def end(self):
+        self.ended = True
+        return self
+
+
+class FakeLangfuseClient:
+    def __init__(self):
+        self.started = None
+        self.observation = FakeLangfuseObservation()
+
+    def start_observation(self, **kwargs):
+        self.started = kwargs
+        return self.observation
+
+
+def test_langfuse_model_call_records_usage_and_cost_details():
+    observability = LangfuseObservability(Settings(langfuse_enabled=False))
+    fake_client = FakeLangfuseClient()
+    observability.enabled = True
+    observability._client = fake_client
+
+    observability.record_model_call(
+        name="investment_research_summary",
+        model_id="amazon.nova-lite-v1:0",
+        input_payload={"prompt": "hello"},
+        output_payload="answer",
+        input_tokens=1000,
+        output_tokens=500,
+        prompt_name="investment_research_summary",
+        prompt_version="v1.2.0",
+        model_parameters={"temperature": 0.15, "max_tokens": 800},
+    )
+
+    assert fake_client.started["as_type"] == "generation"
+    assert fake_client.started["model"] == "amazon.nova-lite-v1:0"
+    assert fake_client.started["usage_details"] == {"input": 1000, "output": 500, "total": 1500}
+    assert fake_client.started["cost_details"]["total"] > 0
+    assert fake_client.started["metadata"]["prompt_version"] == "v1.2.0"
+    assert fake_client.observation.updated["usage_details"]["total"] == 1500
+    assert fake_client.observation.ended is True

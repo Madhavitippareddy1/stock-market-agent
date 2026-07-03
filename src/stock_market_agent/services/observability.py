@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from stock_market_agent.config import Settings, get_settings
+from stock_market_agent.services.metrics import estimate_bedrock_cost
 
 
 @dataclass
@@ -238,6 +239,85 @@ class LangfuseObservability:
                 data_type="NUMERIC",
                 comment="Latency placeholder; detailed latency is captured by Langfuse span timing.",
             )
+        except Exception:
+            pass
+
+    def record_model_call(
+        self,
+        *,
+        name: str,
+        model_id: str,
+        input_payload: Any,
+        output_payload: Any,
+        input_tokens: int,
+        output_tokens: int,
+        prompt_name: str | None = None,
+        prompt_version: str | None = None,
+        model_parameters: dict[str, Any] | None = None,
+        success: bool = True,
+        error: str | None = None,
+        observation_type: str = "generation",
+    ) -> None:
+        """Record a Langfuse generation/embedding with usage and estimated cost.
+
+        Langfuse cost dashboards are populated from generation/embedding
+        observations. Request spans alone can show traces, but they do not make
+        model usage and model cost visible in the LLM usage views.
+        """
+        if not self.enabled or self._client is None:
+            return
+
+        total_tokens = int(input_tokens or 0) + int(output_tokens or 0)
+        input_cost = estimate_bedrock_cost(
+            model_id=model_id,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=0,
+        )
+        total_cost = estimate_bedrock_cost(
+            model_id=model_id,
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+        )
+        output_cost = max(0.0, total_cost - input_cost)
+        usage_details = {
+            "input": int(input_tokens or 0),
+            "output": int(output_tokens or 0),
+            "total": total_tokens,
+        }
+        cost_details = {
+            "input": round(input_cost, 10),
+            "output": round(output_cost, 10),
+            "total": round(total_cost, 10),
+        }
+        metadata = {
+            "provider": "bedrock",
+            "prompt_name": prompt_name,
+            "prompt_version": prompt_version,
+            "estimated_cost_usd": round(total_cost, 10),
+        }
+        try:
+            observation = self._client.start_observation(
+                name=name,
+                as_type=observation_type,  # type: ignore[arg-type]
+                input=input_payload,
+                output=output_payload,
+                metadata=metadata,
+                version=prompt_version,
+                level="DEFAULT" if success else "ERROR",
+                status_message=error,
+                model=model_id,
+                model_parameters=model_parameters or {},
+                usage_details=usage_details,
+                cost_details=cost_details,
+            )
+            observation.update(
+                output=output_payload,
+                usage_details=usage_details,
+                cost_details=cost_details,
+            )
+            observation.end()
+            if self.settings.langfuse_flush_on_request:
+                self.flush()
         except Exception:
             pass
 

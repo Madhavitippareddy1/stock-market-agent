@@ -9,6 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from stock_market_agent.config import get_settings
 from stock_market_agent.services.metrics import estimate_tokens, get_metrics_service
+from stock_market_agent.services.observability import get_observability
 
 
 class BedrockService:
@@ -49,6 +50,7 @@ class BedrockService:
         try:
             response = self.client.converse(**kwargs)
         except (BotoCoreError, ClientError, Exception) as exc:
+            latency_ms = (perf_counter() - started_at) * 1000
             get_metrics_service().record_llm_call(
                 provider="bedrock",
                 model_id=self.settings.bedrock_chat_model_id,
@@ -56,9 +58,23 @@ class BedrockService:
                 prompt_version=prompt_version,
                 input_tokens=input_tokens,
                 output_tokens=0,
-                latency_ms=(perf_counter() - started_at) * 1000,
+                latency_ms=latency_ms,
                 success=False,
                 error=str(exc),
+            )
+            get_observability().record_model_call(
+                name=prompt_name or "bedrock_generation",
+                model_id=self.settings.bedrock_chat_model_id,
+                input_payload={"prompt": prompt, "system_prompt": system_prompt},
+                output_payload=None,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                prompt_name=prompt_name,
+                prompt_version=prompt_version,
+                model_parameters={"max_tokens": max_tokens, "temperature": temperature},
+                success=False,
+                error=str(exc),
+                observation_type="generation",
             )
             return f"Bedrock generation unavailable: {exc}"
 
@@ -68,6 +84,7 @@ class BedrockService:
         usage = response.get("usage", {})
         output_tokens = int(usage.get("outputTokens") or estimate_tokens(answer))
         measured_input_tokens = int(usage.get("inputTokens") or input_tokens)
+        latency_ms = (perf_counter() - started_at) * 1000
         get_metrics_service().record_llm_call(
             provider="bedrock",
             model_id=self.settings.bedrock_chat_model_id,
@@ -75,8 +92,21 @@ class BedrockService:
             prompt_version=prompt_version,
             input_tokens=measured_input_tokens,
             output_tokens=output_tokens,
-            latency_ms=(perf_counter() - started_at) * 1000,
+            latency_ms=latency_ms,
             success=True,
+        )
+        get_observability().record_model_call(
+            name=prompt_name or "bedrock_generation",
+            model_id=self.settings.bedrock_chat_model_id,
+            input_payload={"prompt": prompt, "system_prompt": system_prompt},
+            output_payload=answer,
+            input_tokens=measured_input_tokens,
+            output_tokens=output_tokens,
+            prompt_name=prompt_name,
+            prompt_version=prompt_version,
+            model_parameters={"max_tokens": max_tokens, "temperature": temperature},
+            success=True,
+            observation_type="generation",
         )
         return answer
 
@@ -98,6 +128,7 @@ class BedrockService:
             )
             payload = json.loads(response["body"].read())
         except (BotoCoreError, ClientError, Exception) as exc:
+            latency_ms = (perf_counter() - started_at) * 1000
             get_metrics_service().record_llm_call(
                 provider="bedrock",
                 model_id=self.settings.bedrock_embedding_model_id,
@@ -105,14 +136,29 @@ class BedrockService:
                 prompt_version=None,
                 input_tokens=input_tokens,
                 output_tokens=0,
-                latency_ms=(perf_counter() - started_at) * 1000,
+                latency_ms=latency_ms,
                 success=False,
                 error=str(exc),
+            )
+            get_observability().record_model_call(
+                name="embedding",
+                model_id=self.settings.bedrock_embedding_model_id,
+                input_payload=text,
+                output_payload=None,
+                input_tokens=input_tokens,
+                output_tokens=0,
+                prompt_name="embedding",
+                prompt_version=None,
+                model_parameters={"dimensions": 1024, "normalize": True},
+                success=False,
+                error=str(exc),
+                observation_type="embedding",
             )
             return []
 
         embedding = payload.get("embedding")
         if isinstance(embedding, list):
+            latency_ms = (perf_counter() - started_at) * 1000
             get_metrics_service().record_llm_call(
                 provider="bedrock",
                 model_id=self.settings.bedrock_embedding_model_id,
@@ -120,8 +166,21 @@ class BedrockService:
                 prompt_version=None,
                 input_tokens=input_tokens,
                 output_tokens=0,
-                latency_ms=(perf_counter() - started_at) * 1000,
+                latency_ms=latency_ms,
                 success=True,
+            )
+            get_observability().record_model_call(
+                name="embedding",
+                model_id=self.settings.bedrock_embedding_model_id,
+                input_payload=text,
+                output_payload={"embedding_dimensions": len(embedding)},
+                input_tokens=input_tokens,
+                output_tokens=0,
+                prompt_name="embedding",
+                prompt_version=None,
+                model_parameters={"dimensions": 1024, "normalize": True},
+                success=True,
+                observation_type="embedding",
             )
             return [float(value) for value in embedding]
         return []
