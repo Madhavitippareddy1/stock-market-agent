@@ -81,10 +81,11 @@ def apply_styles() -> None:
             color: #ffffff !important;
         }
         [data-testid="stSidebar"] button {
-            background-color: #ffffff !important;
-            color: #101828 !important;
-            border: 1px solid #d0d5dd !important;
+            background-color: #ff4b4b !important;
+            color: #ffffff !important;
+            border: 1px solid #ff4b4b !important;
             font-weight: 800 !important;
+            border-radius: 0.75rem !important;
         }
         div[data-testid="stTabs"] button {
             font-weight: 750;
@@ -613,7 +614,7 @@ def render_sidebar() -> str:
             key="sidebar_prompt",
             height=110,
         )
-        if st.button("Send", key="sidebar_send_button", type="primary", width="stretch"):
+        if st.button("Send question", key="sidebar_send_button", type="primary", width="stretch"):
             if not prompt.strip():
                 st.warning("Please enter a question.")
             else:

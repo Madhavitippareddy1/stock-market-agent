@@ -149,7 +149,7 @@ class LangGraphSupervisor:
             "rag": ["RAG Agent"],
             "user": ["User Agent"],
             "portfolio": ["Portfolio Agent"],
-            "investment": ["Stock Agent", "User Agent", "Portfolio Agent", "Amazon Bedrock"],
+            "investment": ["Stock Agent", "Amazon Bedrock"],
         }
         selected_route = route or "stock"
         selected_agents = sub_agents.get(selected_route, [final_agent])
@@ -289,19 +289,12 @@ class LangGraphSupervisor:
 
     def _investment_node(self, state: AgentState) -> AgentState:
         stock_result = self.stock_agent.answer(state["question"])
-        user_result = self.user_agent.answer(state.get("user_id", "demo-user"), "show my profile")
-        portfolio_result = self.portfolio_agent.answer(
-            state.get("user_id", "demo-user"),
-            "analyze my portfolio",
-        )
 
         prompt_template = get_prompt_catalog().get("investment_research_summary")
         prompt = prompt_template.render(
             conversation_context=state.get("conversation_context", ""),
             question=state["question"],
             stock_answer=stock_result.answer,
-            user_answer=user_result.answer,
-            portfolio_answer=portfolio_result.answer,
         )
         generated = self.bedrock_service.generate_text(
             prompt,
@@ -314,29 +307,33 @@ class LangGraphSupervisor:
         if generated.startswith("Bedrock generation unavailable"):
             answer = "\n\n".join(
                 [
-                    "Investment research summary:",
+                    "Best-stock investment research summary",
+                    "Short answer: Use the stock evidence below as an educational screen, not as a guaranteed buy signal.",
+                    "Stock evidence:",
                     stock_result.answer,
-                    "Portfolio context:",
-                    portfolio_result.answer,
-                    generated,
+                    "Why it may be attractive:",
+                    "- Positive price momentum, strong company fundamentals, or sector strength may support further research when shown in the stock evidence.",
+                    "Main risks:",
+                    "- Valuation, earnings surprises, interest-rate changes, company news, and market volatility can change the outlook quickly.",
+                    "What to verify next:",
+                    "- Latest earnings report, revenue and earnings growth, valuation ratios, analyst updates, debt levels, and recent news.",
                     "Disclaimer: Educational research only, not financial advice.",
                 ]
             )
         else:
             answer = generated
+        answer = answer.replace("—", "-").replace("â", "-")
 
         result = AgentResult(
             agent="Investment Agent",
             answer=answer,
             sources=list(
                 dict.fromkeys(
-                    stock_result.sources + user_result.sources + portfolio_result.sources
+                    stock_result.sources
                 )
             ),
             data={
                 "stock": stock_result.data,
-                "user": user_result.data,
-                "portfolio": portfolio_result.data,
                 "prompt": {
                     "name": prompt_template.name,
                     "version": prompt_template.version,
