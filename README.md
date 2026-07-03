@@ -105,7 +105,7 @@ http://3.10.228.209:8501
 The app connects to the AWS-hosted shared MCP Tools server:
 
 ```text
-http://16.60.156.10:8000/sse
+http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse
 ```
 
 Current AWS resources:

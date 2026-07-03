@@ -3,10 +3,10 @@
 This project connects to a common MCP server used by multiple projects. The MCP
 server should expose the tools below for this stock market application.
 
-Local common MCP server endpoint:
+AWS shared MCP server endpoint:
 
 ```text
-http://localhost:8001/sse
+http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse
 ```
 
 ## Stock tools

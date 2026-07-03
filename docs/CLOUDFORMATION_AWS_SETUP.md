@@ -107,14 +107,14 @@ MCP server endpoint:
 ```json
 {
   "ParameterKey": "McpServerUrl",
-  "ParameterValue": "https://your-shared-mcp-server/sse"
+  "ParameterValue": "http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse"
 }
 ```
 
-For local Docker testing, the common MCP server is exposed on:
+For the AWS deployment, the common MCP server is exposed on the internal shared ALB:
 
 ```text
-http://localhost:8001/sse
+http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse
 ```
 
 ## Optional CodePipeline source

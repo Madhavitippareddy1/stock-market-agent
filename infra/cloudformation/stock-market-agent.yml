@@ -30,7 +30,7 @@ Parameters:
     Default: 0.0.0.0/0
   McpServerUrl:
     Type: String
-    Default: http://localhost:8001/sse
+    Default: http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse
   ReportsBucketName:
     Type: String
     Default: ""

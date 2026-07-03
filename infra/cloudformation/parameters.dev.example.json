@@ -33,7 +33,7 @@
   },
   {
     "ParameterKey": "McpServerUrl",
-    "ParameterValue": "http://16.60.156.10:8000/sse"
+    "ParameterValue": "http://internal-dstrmaysam-shared-mcp-alb-748190876.eu-west-2.elb.amazonaws.com/sse"
   },
   {
     "ParameterKey": "ReportsBucketName",
