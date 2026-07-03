@@ -112,20 +112,45 @@ def apply_styles() -> None:
             margin-top: 1rem;
             line-height: 1.55;
         }
+        [data-testid="stSidebar"] [data-testid="stExpander"] {
+            background: #f8fafc !important;
+            border: 1px solid #e4e7ec !important;
+            border-radius: 0.75rem !important;
+            overflow: hidden;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary p,
+        [data-testid="stSidebar"] [data-testid="stExpander"] summary span {
+            background: #ffffff !important;
+            color: #101828 !important;
+            font-weight: 800 !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] div,
+        [data-testid="stSidebar"] [data-testid="stExpander"] p,
+        [data-testid="stSidebar"] [data-testid="stExpander"] span,
+        [data-testid="stSidebar"] [data-testid="stExpander"] li {
+            color: #101828 !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stExpander"] ul {
+            padding-left: 1.25rem;
+        }
         .chat-history-card {
-            background: #1d2939;
-            border: 1px solid rgba(255,255,255,0.12);
+            background: #ffffff;
+            color: #101828 !important;
+            border: 1px solid #d0d5dd;
             border-radius: 0.85rem;
             padding: 0.75rem;
             margin: 0.5rem 0;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
         }
         .chat-history-card p {
+            color: #101828 !important;
             margin-bottom: 0.25rem;
         }
         .chat-role {
-            color: #98a2b3;
+            color: #d92d20 !important;
             font-size: 0.85rem;
-            font-weight: 800;
+            font-weight: 900;
             text-transform: uppercase;
         }
         .flow-card {
