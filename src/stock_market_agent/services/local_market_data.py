@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import yfinance as yf
+
+from stock_market_agent.config import get_settings
+from stock_market_agent.services.chat_history import load_database_secret
 
 
 DEMO_USER = {
@@ -120,6 +124,187 @@ SEED_USERS, SEED_PORTFOLIOS = build_seed_users()
 CUSTOM_USERS_PATH = Path("data/custom_users.json")
 
 
+def _database_credentials() -> tuple[str | None, int, str, str | None, str | None]:
+    settings = get_settings()
+    database_username = settings.database_username
+    database_password = settings.database_password
+    if settings.database_secret_arn and (not database_username or not database_password):
+        try:
+            secret = load_database_secret(settings.database_secret_arn, settings.aws_region)
+            database_username = database_username or secret.get("username")
+            database_password = database_password or secret.get("password")
+        except Exception:
+            database_username = None
+            database_password = None
+    return (
+        settings.database_host,
+        settings.database_port,
+        settings.database_name,
+        database_username,
+        database_password,
+    )
+
+
+def _postgres_configured() -> bool:
+    host, _, _, username, password = _database_credentials()
+    return bool(host and username and password)
+
+
+def _postgres_connect():
+    host, port, dbname, username, password = _database_credentials()
+    if not host or not username or not password:
+        raise RuntimeError("PostgreSQL custom user store is not configured")
+    return psycopg.connect(
+        host=host,
+        port=port,
+        dbname=dbname,
+        user=username,
+        password=password,
+        connect_timeout=5,
+    )
+
+
+def _initialize_postgres_custom_store(connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investment_users (
+            user_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            sector TEXT NOT NULL,
+            risk_profile TEXT NOT NULL,
+            investment_goal TEXT NOT NULL,
+            watchlist JSONB NOT NULL DEFAULT '[]'::jsonb,
+            source TEXT NOT NULL DEFAULT 'streamlit-created',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS investment_portfolio_holdings (
+            user_id TEXT NOT NULL REFERENCES investment_users(user_id) ON DELETE CASCADE,
+            ticker TEXT NOT NULL,
+            quantity NUMERIC NOT NULL,
+            average_buy_price NUMERIC NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, ticker)
+        )
+        """
+    )
+
+
+def _coerce_watchlist(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return _normalize_tickers(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return _normalize_tickers(parsed)
+        except Exception:
+            return _normalize_tickers(value)
+    return []
+
+
+def _load_postgres_custom_store() -> dict[str, Any]:
+    with _postgres_connect() as connection:
+        _initialize_postgres_custom_store(connection)
+        user_rows = connection.execute(
+            """
+            SELECT user_id, display_name, sector, risk_profile, investment_goal, watchlist::TEXT, source
+            FROM investment_users
+            ORDER BY user_id ASC
+            """
+        ).fetchall()
+        holding_rows = connection.execute(
+            """
+            SELECT user_id, ticker, quantity, average_buy_price
+            FROM investment_portfolio_holdings
+            ORDER BY user_id ASC, ticker ASC
+            """
+        ).fetchall()
+
+    users = {
+        row[0]: {
+            "user_id": row[0],
+            "display_name": row[1],
+            "sector": row[2],
+            "risk_profile": row[3],
+            "investment_goal": row[4],
+            "watchlist": _coerce_watchlist(row[5]),
+            "source": row[6],
+        }
+        for row in user_rows
+    }
+    portfolios: dict[str, list[dict[str, Any]]] = {user_id: [] for user_id in users}
+    for row in holding_rows:
+        portfolios.setdefault(row[0], []).append(
+            {
+                "ticker": row[1],
+                "quantity": float(row[2]),
+                "average_buy_price": float(row[3]),
+            }
+        )
+    return {"users": users, "portfolios": portfolios}
+
+
+def _save_postgres_custom_store(store: dict[str, Any]) -> None:
+    with _postgres_connect() as connection:
+        _initialize_postgres_custom_store(connection)
+        for user_id, user in store.get("users", {}).items():
+            watchlist = _normalize_tickers(user.get("watchlist", []))
+            connection.execute(
+                """
+                INSERT INTO investment_users(
+                    user_id, display_name, sector, risk_profile, investment_goal, watchlist, source, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, NOW())
+                ON CONFLICT (user_id) DO UPDATE SET
+                    display_name = EXCLUDED.display_name,
+                    sector = EXCLUDED.sector,
+                    risk_profile = EXCLUDED.risk_profile,
+                    investment_goal = EXCLUDED.investment_goal,
+                    watchlist = EXCLUDED.watchlist,
+                    source = EXCLUDED.source,
+                    updated_at = NOW()
+                """,
+                (
+                    user_id,
+                    user.get("display_name", "New Investor"),
+                    user.get("sector", "diversified"),
+                    user.get("risk_profile", "balanced"),
+                    user.get("investment_goal", "long-term growth"),
+                    json.dumps(watchlist),
+                    user.get("source", "streamlit-created"),
+                ),
+            )
+            connection.execute(
+                "DELETE FROM investment_portfolio_holdings WHERE user_id = %s",
+                (user_id,),
+            )
+            for holding in store.get("portfolios", {}).get(user_id, []):
+                connection.execute(
+                    """
+                    INSERT INTO investment_portfolio_holdings(
+                        user_id, ticker, quantity, average_buy_price, updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (user_id, ticker) DO UPDATE SET
+                        quantity = EXCLUDED.quantity,
+                        average_buy_price = EXCLUDED.average_buy_price,
+                        updated_at = NOW()
+                    """,
+                    (
+                        user_id,
+                        str(holding.get("ticker", "")).upper(),
+                        float(holding.get("quantity", 0)),
+                        float(holding.get("average_buy_price", 0)),
+                    ),
+                )
+
+
 def _normalize_tickers(tickers: list[str] | str | None) -> list[str]:
     if tickers is None:
         return []
@@ -136,6 +321,13 @@ def _normalize_tickers(tickers: list[str] | str | None) -> list[str]:
 
 
 def _load_custom_store() -> dict[str, Any]:
+    if _postgres_configured():
+        try:
+            return _load_postgres_custom_store()
+        except Exception:
+            # Local development should keep working even when the private RDS
+            # endpoint is not reachable from the developer machine.
+            pass
     if not CUSTOM_USERS_PATH.exists():
         return {"users": {}, "portfolios": {}}
     try:
@@ -150,6 +342,14 @@ def _load_custom_store() -> dict[str, Any]:
 
 
 def _save_custom_store(store: dict[str, Any]) -> None:
+    if _postgres_configured():
+        try:
+            _save_postgres_custom_store(store)
+            return
+        except Exception:
+            # Fall back to local JSON if a developer is outside the VPC or AWS
+            # credentials are unavailable. ECS uses RDS when reachable.
+            pass
     CUSTOM_USERS_PATH.parent.mkdir(parents=True, exist_ok=True)
     with CUSTOM_USERS_PATH.open("w", encoding="utf-8") as file:
         json.dump(store, file, indent=2, sort_keys=True)
