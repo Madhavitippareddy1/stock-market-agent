@@ -251,6 +251,9 @@ class LangfuseObservability:
         output_payload: Any,
         input_tokens: int,
         output_tokens: int,
+        latency_ms: float | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
         prompt_name: str | None = None,
         prompt_version: str | None = None,
         model_parameters: dict[str, Any] | None = None,
@@ -294,9 +297,19 @@ class LangfuseObservability:
             "prompt_name": prompt_name,
             "prompt_version": prompt_version,
             "estimated_cost_usd": round(total_cost, 10),
+            "input_cost_usd": round(input_cost, 10),
+            "output_cost_usd": round(output_cost, 10),
+            "input_tokens": int(input_tokens or 0),
+            "output_tokens": int(output_tokens or 0),
+            "total_tokens": total_tokens,
+            "latency_ms": round(float(latency_ms or 0), 2) if latency_ms is not None else None,
+            "user_id": user_id,
+            "session_id": session_id,
+            "model_id": model_id,
+            "observation_type": observation_type,
         }
         try:
-            observation = self._client.start_observation(
+            observation_cm = self._client.start_as_current_observation(
                 name=name,
                 as_type=observation_type,  # type: ignore[arg-type]
                 input=input_payload,
@@ -309,13 +322,40 @@ class LangfuseObservability:
                 model_parameters=model_parameters or {},
                 usage_details=usage_details,
                 cost_details=cost_details,
+                end_on_exit=True,
             )
-            observation.update(
-                output=output_payload,
-                usage_details=usage_details,
-                cost_details=cost_details,
-            )
-            observation.end()
+            with observation_cm as observation:
+                observation.update(
+                    output=output_payload,
+                    metadata=metadata,
+                    usage_details=usage_details,
+                    cost_details=cost_details,
+                )
+                for score_name, score_value, comment in [
+                    ("model_input_tokens", int(input_tokens or 0), "Bedrock input tokens for this model call."),
+                    ("model_output_tokens", int(output_tokens or 0), "Bedrock output tokens for this model call."),
+                    ("model_total_tokens", total_tokens, "Total Bedrock tokens for this model call."),
+                    ("model_cost_usd", round(total_cost, 10), "Estimated Bedrock model cost in USD."),
+                ]:
+                    try:
+                        observation.score(
+                            name=score_name,
+                            value=float(score_value),
+                            data_type="NUMERIC",
+                            comment=comment,
+                        )
+                    except Exception:
+                        pass
+                if latency_ms is not None:
+                    try:
+                        observation.score(
+                            name="model_latency_ms",
+                            value=float(latency_ms),
+                            data_type="NUMERIC",
+                            comment="Observed Bedrock call latency in milliseconds.",
+                        )
+                    except Exception:
+                        pass
             if self.settings.langfuse_flush_on_request:
                 self.flush()
         except Exception:
