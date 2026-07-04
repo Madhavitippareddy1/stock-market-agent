@@ -62,6 +62,14 @@ class FakeLangfuseObservation:
     def __init__(self):
         self.updated = None
         self.ended = False
+        self.scores = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        self.ended = True
+        return False
 
     def update(self, **kwargs):
         self.updated = kwargs
@@ -71,13 +79,16 @@ class FakeLangfuseObservation:
         self.ended = True
         return self
 
+    def score(self, **kwargs):
+        self.scores.append(kwargs)
+
 
 class FakeLangfuseClient:
     def __init__(self):
         self.started = None
         self.observation = FakeLangfuseObservation()
 
-    def start_observation(self, **kwargs):
+    def start_as_current_observation(self, **kwargs):
         self.started = kwargs
         return self.observation
 
@@ -106,4 +117,5 @@ def test_langfuse_model_call_records_usage_and_cost_details():
     assert fake_client.started["cost_details"]["total"] > 0
     assert fake_client.started["metadata"]["prompt_version"] == "v1.2.0"
     assert fake_client.observation.updated["usage_details"]["total"] == 1500
+    assert any(score["name"] == "model_cost_usd" for score in fake_client.observation.scores)
     assert fake_client.observation.ended is True
