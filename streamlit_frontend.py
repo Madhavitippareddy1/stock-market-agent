@@ -1242,18 +1242,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_research, tab_portfolio, tab_watchlist, tab_observability = st.tabs(
-    ["Agent Research", "My Portfolio", "My Watchlist", "Observability"]
+selected_section = st.radio(
+    "Main navigation",
+    ["Agent Research", "My Portfolio", "My Watchlist", "Observability"],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="main_navigation",
 )
 
-with tab_research:
+if selected_section == "Agent Research":
     render_research_tab(session_id)
-
-with tab_portfolio:
+elif selected_section == "My Portfolio":
     render_portfolio_tab(session_id)
-
-with tab_watchlist:
+elif selected_section == "My Watchlist":
     render_watchlist_tab(session_id)
-
-with tab_observability:
+elif selected_section == "Observability":
     render_observability_tab()
