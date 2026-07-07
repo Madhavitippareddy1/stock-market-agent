@@ -305,6 +305,14 @@ class LangGraphSupervisor:
     def _investment_node(self, state: AgentState) -> AgentState:
         stock_result = self.stock_agent.answer(state["question"])
         requested_tickers = _extract_requested_tickers(state["question"])
+        if (stock_result.data or {}).get("budget_screen"):
+            result = AgentResult(
+                agent="Investment Agent",
+                answer=stock_result.answer,
+                sources=list(dict.fromkeys(stock_result.sources)),
+                data={"stock": stock_result.data},
+            ).model_dump()
+            return {**state, "result": result}
 
         prompt_template = get_prompt_catalog().get("investment_research_summary")
         prompt = prompt_template.render(

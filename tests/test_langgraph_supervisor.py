@@ -1,5 +1,6 @@
 from stock_market_agent.agents.portfolio_agent import PortfolioAgent
 from stock_market_agent.agents.rag_agent import RagAgent
+from stock_market_agent.agents import stock_agent
 from stock_market_agent.agents.stock_agent import StockAgent
 from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.graphs.langgraph_supervisor import LangGraphSupervisor
@@ -70,6 +71,42 @@ def test_investment_question_keeps_requested_apple_ticker():
     assert result["agent"] == "Investment Agent"
     assert "AAPL" in result["answer"]
     assert "SBUX" not in result["answer"]
+
+
+def test_investment_question_with_budget_uses_budget_screen(monkeypatch):
+    def fake_quote(ticker):
+        prices = {
+            "CSCO": 50.0,
+            "PFE": 25.0,
+            "KO": 70.0,
+            "T": 30.0,
+            "VZ": 45.0,
+            "INTC": 35.0,
+            "WBD": 12.0,
+            "CMCSA": 40.0,
+            "PYPL": 80.0,
+            "SBUX": 110.0,
+        }
+        price = prices[ticker]
+        return {
+            "ticker": ticker,
+            "company_name": f"{ticker} Company",
+            "price": price,
+            "previous_close": max(price - 1, 1),
+            "currency": "USD",
+            "market_cap": 100_000_000_000,
+            "sector": "Technology",
+            "industry": "Test industry",
+        }
+
+    monkeypatch.setattr(stock_agent, "_quote_from_yfinance", fake_quote)
+
+    result = make_graph().run("best stock to invest now, i have £100", user_id="demo-user")
+
+    assert result["agent"] == "Investment Agent"
+    assert "Budget-aware investment screen" in result["answer"]
+    assert "AAPL" not in result["answer"]
+    assert (result["data"]["stock"] or {}).get("budget_screen") is True
 
 
 def test_langgraph_records_stock_tickers_in_observability_metadata(tmp_path, monkeypatch):

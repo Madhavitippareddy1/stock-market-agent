@@ -38,6 +38,9 @@ COMPANY_NAME_TO_TICKER = {
     "csx corporation": "CSX",
 }
 
+BUDGET_SCREEN_TICKERS = ["CSCO", "PFE", "KO", "T", "VZ", "INTC", "WBD", "CMCSA", "PYPL", "SBUX"]
+GBP_TO_USD_ESTIMATE = 1.27
+
 
 def _is_mcp_error(result: dict[str, Any]) -> bool:
     answer = str(result.get("answer", "")).lower()
@@ -150,6 +153,107 @@ def _format_percent(value: float | None) -> str:
     if value is None:
         return "not available"
     return f"{value:+.2f}%"
+
+
+def _extract_budget(question: str) -> dict[str, Any] | None:
+    currency = None
+    amount = None
+    symbol_match = re.search(r"([£$])\s*([0-9]+(?:\.[0-9]+)?)", question)
+    if symbol_match:
+        currency = "GBP" if symbol_match.group(1) == "£" else "USD"
+        amount = float(symbol_match.group(2))
+    else:
+        word_match = re.search(
+            r"\b([0-9]+(?:\.[0-9]+)?)\s*(pounds?|gbp|dollars?|usd)\b",
+            question,
+            flags=re.IGNORECASE,
+        )
+        if word_match:
+            amount = float(word_match.group(1))
+            word = word_match.group(2).lower()
+            currency = "GBP" if word in {"pound", "pounds", "gbp"} else "USD"
+
+    if amount is None or currency is None:
+        return None
+    budget_usd = amount * GBP_TO_USD_ESTIMATE if currency == "GBP" else amount
+    return {
+        "amount": amount,
+        "currency": currency,
+        "budget_usd": budget_usd,
+        "display": f"{currency} {amount:,.2f}",
+    }
+
+
+def _budget_stock_screen(question: str) -> dict[str, Any] | None:
+    budget = _extract_budget(question)
+    if not budget:
+        return None
+
+    quotes = [_quote_from_yfinance(ticker) for ticker in BUDGET_SCREEN_TICKERS]
+    valid_quotes = [quote for quote in quotes if quote.get("price") is not None]
+    if not valid_quotes:
+        return None
+
+    affordable = [
+        quote
+        for quote in valid_quotes
+        if (quote.get("currency") or "USD") == "USD"
+        and float(quote.get("price") or 0) <= float(budget["budget_usd"])
+    ]
+    candidates = affordable or sorted(valid_quotes, key=lambda quote: float(quote.get("price") or 999999))[:5]
+
+    def score_quote(quote: dict[str, Any]) -> float:
+        price = float(quote.get("price") or 0)
+        previous_close = float(quote.get("previous_close") or price or 1)
+        market_cap = float(quote.get("market_cap") or 0)
+        daily_change = ((price - previous_close) / previous_close) * 100 if previous_close else 0
+        budget_fit = 20 if price <= float(budget["budget_usd"]) else -20
+        size_score = min(market_cap / 1_000_000_000_000, 1.0) * 20
+        momentum_score = max(min(daily_change, 5), -5)
+        return budget_fit + size_score + momentum_score
+
+    ranked = sorted(candidates, key=score_quote, reverse=True)[:5]
+    top = ranked[0]
+    rows: list[str] = []
+    for quote in ranked:
+        price = float(quote.get("price") or 0)
+        previous_close = float(quote.get("previous_close") or price or 1)
+        daily_change = ((price - previous_close) / previous_close) * 100 if previous_close else 0
+        affordable_text = (
+            "fits budget"
+            if price <= float(budget["budget_usd"])
+            else "above budget; fractional shares required"
+        )
+        rows.append(
+            "- "
+            f"{quote['ticker']} - {quote.get('company_name') or 'Company name unavailable'}: "
+            f"{_money(price, quote.get('currency') or 'USD')}, "
+            f"{daily_change:+.2f}% vs previous close, "
+            f"{quote.get('sector') or 'sector unavailable'}; {affordable_text}."
+        )
+
+    answer = "\n\n".join(
+        [
+            "Budget-aware investment screen",
+            f"Budget detected: {budget['display']} (about USD {budget['budget_usd']:,.2f} using an estimated FX rate).",
+            f"Short answer: {top['ticker']} is the strongest fit from this simple budget screen, but compare the full shortlist below before deciding.",
+            "Shortlisted stocks:",
+            "\n".join(rows),
+            "Why not default to expensive stocks:",
+            "- A stock above your budget only works if your broker supports fractional shares. Otherwise, it is not directly buyable with this budget.",
+            "What to verify next:",
+            "- Latest earnings, valuation, revenue growth, debt, dividend policy, recent news, and whether your broker supports fractional shares.",
+            "Disclaimer: Educational research only, not financial advice. Please consult a licensed financial advisor before investing.",
+        ]
+    )
+    return {
+        "answer": answer,
+        "sources": ["Yahoo Finance via yfinance budget screen"],
+        "tickers": [quote["ticker"] for quote in ranked],
+        "quotes": ranked,
+        "budget": budget,
+        "budget_screen": True,
+    }
 
 
 def _five_year_stock_report(question: str) -> dict[str, Any] | None:
@@ -327,7 +431,7 @@ class StockAgent:
             phrase in normalized
             for phrase in ["best stock", "suggest", "recommend", "top stock", "this month"]
         ):
-            result = self.mcp_client.call_tool(
+            result = _budget_stock_screen(question) or self.mcp_client.call_tool(
                 "suggest_best_stock_of_month",
                 {"question": question},
             )
