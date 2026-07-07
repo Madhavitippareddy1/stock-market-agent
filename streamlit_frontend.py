@@ -1025,17 +1025,50 @@ def render_watchlist_tab(session_id: str) -> None:
 
 def render_observability_tab() -> None:
     st.markdown("### Observability")
-    if st.button("Refresh observability summary", key="refresh_observability_button", type="primary"):
+    st.caption(
+        "Tracks API requests, agent routing, Bedrock/LLM usage, estimated cost, latency, "
+        "RAGAS scores, and Langfuse configuration for the current backend."
+    )
+    st.caption(f"Backend API: `{API_BASE_URL}`")
+
+    should_refresh = st.button(
+        "Refresh observability summary",
+        key="refresh_observability_button",
+        type="primary",
+    )
+    if should_refresh or "observability_result" not in st.session_state:
         try:
             st.session_state["observability_result"] = api_get("/observability/summary")
         except Exception as exc:
-            st.error(f"Observability API failed: {exc}")
-    if not st.session_state.get("observability_result"):
-        try:
-            st.session_state["observability_result"] = api_get("/observability/summary")
-        except Exception:
             st.session_state["observability_result"] = {}
+            st.error(f"Observability API failed: {exc}")
     summary = st.session_state.get("observability_result", {})
+    runtime = summary.get("runtime") or {}
+
+    if not summary:
+        st.warning(
+            "No observability summary is available yet. Start the FastAPI backend, run one "
+            "Agent Research or chatbot request, then refresh this tab."
+        )
+        return
+
+    if summary.get("last_event_timestamp"):
+        st.success(f"Latest telemetry event: {summary['last_event_timestamp']}")
+    else:
+        st.warning(
+            "No telemetry events have been recorded by this backend yet. Run a stock question, "
+            "investment question, or RAG/report question first, then refresh."
+        )
+
+    status_cols = st.columns(5)
+    status_cols[0].metric("Runtime", runtime.get("environment", "unknown"))
+    status_cols[1].metric("Langfuse", "On" if runtime.get("langfuse_enabled") else "Off")
+    status_cols[2].metric("Langfuse keys", "Present" if runtime.get("langfuse_configured") else "Missing")
+    status_cols[3].metric("RAGAS", "On" if runtime.get("ragas_enabled") else "Off")
+    status_cols[4].metric("OpenSearch", "On" if runtime.get("opensearch_configured") else "Off")
+
+    with st.expander("Observability runtime details", expanded=False):
+        st.json(runtime)
 
     col_req, col_err, col_lat, col_cost = st.columns(4)
     col_req.metric("Requests", summary.get("request_count", 0))
@@ -1137,9 +1170,14 @@ def render_observability_tab() -> None:
         else:
             st.warning(
                 "No RAGAS scores found yet. RAGAS is generated only for RAG/report questions. "
-                "Go to Agent Research, upload a PDF/TXT/MD report or ask for a stored financial report, "
-                "then refresh this Observability tab."
+                "Go to Agent Research, upload a PDF/TXT/MD report or ask for a stored financial report. "
+                "After the RAG Agent answers, come back here and click Refresh observability summary."
             )
+    else:
+        st.info(
+            "No recent event rows found. The backend is reachable, but this task/container has not "
+            "recorded request telemetry yet."
+        )
 
     with st.expander("Raw observability JSON", expanded=False):
         st.json(summary)

@@ -286,4 +286,17 @@ def clear_chat_history(session_id: str) -> dict[str, str]:
 
 @app.get("/observability/summary")
 def observability_summary() -> dict[str, Any]:
-    return get_metrics_service().dashboard_summary()
+    settings = get_settings()
+    summary = get_metrics_service().dashboard_summary()
+    summary["runtime"] = {
+        "environment": settings.environment,
+        "aws_region": settings.aws_region,
+        "metrics_path": settings.observability_metrics_path,
+        "langfuse_enabled": settings.langfuse_enabled,
+        "langfuse_configured": bool(settings.langfuse_public_key and settings.langfuse_secret_key),
+        "ragas_enabled": settings.ragas_enabled,
+        "mcp_server_url": settings.mcp_server_url,
+        "opensearch_configured": bool(settings.opensearch_endpoint),
+        "reports_bucket_configured": bool(settings.reports_bucket),
+    }
+    return summary

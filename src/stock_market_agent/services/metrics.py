@@ -184,6 +184,7 @@ class MetricsService:
             "avg_tokens_per_llm_call": statistics.fmean(tokens) if tokens else 0.0,
             "total_cost_usd": sum(costs),
             "avg_cost_per_request": (sum(costs) / len(requests)) if requests else 0.0,
+            "last_event_timestamp": events[-1].get("timestamp") if events else None,
             "events": events,
         }
 
