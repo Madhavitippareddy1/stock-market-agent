@@ -314,6 +314,7 @@ class StockAgent:
         self.mcp_client = mcp_client
 
     def answer(self, question: str) -> AgentResult:
+        requested_tickers = _extract_requested_tickers(question)
         normalized = question.lower()
         if _is_five_year_question(question):
             result = _five_year_stock_report(question)
@@ -359,7 +360,13 @@ class StockAgent:
         else:
             result = self.mcp_client.call_tool("stock_research", {"question": question})
 
-        if _is_mcp_error(result):
+        returned_tickers = [str(ticker).upper() for ticker in result.get("tickers", [])]
+        answer_text = str(result.get("answer", ""))
+        missing_requested_ticker = bool(requested_tickers) and not all(
+            ticker in returned_tickers or ticker in answer_text.upper()
+            for ticker in requested_tickers
+        )
+        if _is_mcp_error(result) or missing_requested_ticker:
             result = _direct_stock_fallback(question, result.get("answer", "MCP tool failed."))
 
         answer = result.get("answer") or "Stock research tool did not return an answer yet."

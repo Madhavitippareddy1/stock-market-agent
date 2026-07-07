@@ -6,7 +6,7 @@ from langgraph.graph import END, StateGraph
 
 from stock_market_agent.agents.portfolio_agent import PortfolioAgent
 from stock_market_agent.agents.rag_agent import RagAgent
-from stock_market_agent.agents.stock_agent import StockAgent
+from stock_market_agent.agents.stock_agent import StockAgent, _extract_requested_tickers
 from stock_market_agent.agents.user_agent import UserAgent
 from stock_market_agent.models import AgentResult
 from stock_market_agent.services.bedrock_service import BedrockService
@@ -304,6 +304,7 @@ class LangGraphSupervisor:
 
     def _investment_node(self, state: AgentState) -> AgentState:
         stock_result = self.stock_agent.answer(state["question"])
+        requested_tickers = _extract_requested_tickers(state["question"])
 
         prompt_template = get_prompt_catalog().get("investment_research_summary")
         prompt = prompt_template.render(
@@ -338,6 +339,24 @@ class LangGraphSupervisor:
         else:
             answer = generated
         answer = answer.replace("—", "-").replace("â", "-")
+
+        if requested_tickers and not all(ticker in answer.upper() for ticker in requested_tickers):
+            answer = "\n\n".join(
+                [
+                    "Investment research summary",
+                    f"Short answer: This question is about {', '.join(requested_tickers)}. "
+                    "Use the evidence below for educational research only; this is not a buy/sell recommendation.",
+                    "Stock evidence:",
+                    stock_result.answer,
+                    "Why it may be attractive:",
+                    "- Review current price, previous close, market cap, sector, and business quality shown in the stock evidence.",
+                    "Main risks:",
+                    "- Valuation, earnings results, company news, interest rates, market volatility, and sector rotation can change the outlook quickly.",
+                    "What to verify next:",
+                    "- Latest earnings, revenue growth, margins, valuation ratios, debt levels, analyst updates, and recent company news.",
+                    "Disclaimer: Educational research only, not financial advice. Please consult a licensed financial advisor before investing.",
+                ]
+            )
 
         result = AgentResult(
             agent="Investment Agent",

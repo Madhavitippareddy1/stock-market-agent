@@ -11,11 +11,20 @@ from stock_market_agent.config import Settings
 class FakeMcpClient:
     def call_tool(self, tool_name, arguments):
         if tool_name == "stock_research":
+            question = str(arguments.get("question", "")).lower()
+            ticker = "CSCO"
+            company = "Cisco Systems"
+            if "pepsi" in question:
+                ticker = "PEP"
+                company = "PepsiCo"
+            elif "apple" in question:
+                ticker = "AAPL"
+                company = "Apple"
             return {
-                "answer": "CSCO: USD 50.00",
+                "answer": f"{ticker} - {company}: USD 50.00",
                 "sources": ["Fake market data"],
-                "tickers": ["CSCO"],
-                "quotes": [{"ticker": "CSCO", "price": 50.0, "currency": "USD"}],
+                "tickers": [ticker],
+                "quotes": [{"ticker": ticker, "price": 50.0, "currency": "USD"}],
                 "arguments": arguments,
             }
         return {"answer": f"{tool_name} called", "sources": [], "arguments": arguments}
@@ -45,13 +54,22 @@ def test_langgraph_routes_stock_question():
 def test_langgraph_routes_investment_question_to_bedrock_backed_agent():
     result = make_graph().run("should I buy PepsiCo?", user_id="demo-user")
     assert result["agent"] == "Investment Agent"
-    assert result["answer"] == "Bedrock investment summary"
+    assert "PEP" in result["answer"]
+    assert "Stock evidence" in result["answer"]
 
 
 def test_langgraph_routes_best_stock_question_to_investment_agent():
     result = make_graph().run("suggest me the best stock of this month", user_id="demo-user")
     assert result["agent"] == "Investment Agent"
     assert result["answer"] == "Bedrock investment summary"
+
+
+def test_investment_question_keeps_requested_apple_ticker():
+    result = make_graph().run("is better to invest in apple", user_id="demo-user")
+
+    assert result["agent"] == "Investment Agent"
+    assert "AAPL" in result["answer"]
+    assert "SBUX" not in result["answer"]
 
 
 def test_langgraph_records_stock_tickers_in_observability_metadata(tmp_path, monkeypatch):
