@@ -1036,13 +1036,13 @@ def render_observability_tab() -> None:
         key="refresh_observability_button",
         type="primary",
     )
-    if should_refresh or "observability_result" not in st.session_state:
+    if should_refresh or not st.session_state.get("observability_result"):
         try:
             st.session_state["observability_result"] = api_get("/observability/summary")
         except Exception as exc:
             st.session_state["observability_result"] = {}
             st.error(f"Observability API failed: {exc}")
-    summary = st.session_state.get("observability_result", {})
+    summary = st.session_state.get("observability_result") or {}
     runtime = summary.get("runtime") or {}
 
     if not summary:
