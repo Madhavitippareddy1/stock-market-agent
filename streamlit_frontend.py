@@ -1029,7 +1029,6 @@ def render_observability_tab() -> None:
         "Tracks API requests, agent routing, Bedrock/LLM usage, estimated cost, latency, "
         "RAGAS scores, and Langfuse configuration for the current backend."
     )
-    st.caption(f"Backend API: `{API_BASE_URL}`")
 
     should_refresh = st.button(
         "Refresh observability summary",
@@ -1113,6 +1112,11 @@ def render_observability_tab() -> None:
                 else False
             )
         st.markdown("### Recent events")
+        st.caption(
+            "Recent events shows the latest telemetry captured by the app: user question, "
+            "selected agent, route, stock tickers/prices when available, source count, "
+            "latency, token usage, estimated cost, and success/error status."
+        )
         visible_cols = [
             col
             for col in [
