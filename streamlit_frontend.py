@@ -1085,6 +1085,33 @@ def render_observability_tab() -> None:
     events = summary.get("events", [])
     if events:
         events_df = pd.DataFrame(events)
+        if "metadata" in events_df.columns:
+            events_df["source_count"] = events_df["metadata"].apply(
+                lambda metadata: (metadata or {}).get("source_count")
+                if isinstance(metadata, dict)
+                else None
+            )
+            events_df["tickers"] = events_df["metadata"].apply(
+                lambda metadata: ", ".join((metadata or {}).get("tickers") or [])
+                if isinstance(metadata, dict)
+                else ""
+            )
+            events_df["stock_prices"] = events_df["metadata"].apply(
+                lambda metadata: ", ".join(
+                    [
+                        f"{item.get('ticker')}: {item.get('currency') or 'USD'} {item.get('price')}"
+                        for item in ((metadata or {}).get("stock_prices") or [])
+                        if isinstance(item, dict) and item.get("ticker")
+                    ]
+                )
+                if isinstance(metadata, dict)
+                else ""
+            )
+            events_df["has_stock_history"] = events_df["metadata"].apply(
+                lambda metadata: bool((metadata or {}).get("has_stock_history"))
+                if isinstance(metadata, dict)
+                else False
+            )
         st.markdown("### Recent events")
         visible_cols = [
             col
@@ -1094,6 +1121,10 @@ def render_observability_tab() -> None:
                 "agent",
                 "route",
                 "question",
+                "tickers",
+                "stock_prices",
+                "source_count",
+                "has_stock_history",
                 "model_id",
                 "latency_ms",
                 "total_tokens",

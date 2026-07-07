@@ -93,6 +93,21 @@ class LangGraphSupervisor:
                     "source_count": len(result.get("sources", [])),
                     "agent_flow": agent_flow,
                 }
+                if result_data.get("tickers"):
+                    request_metadata["tickers"] = result_data["tickers"]
+                if result_data.get("quotes"):
+                    request_metadata["quotes"] = result_data["quotes"]
+                    request_metadata["stock_prices"] = [
+                        {
+                            "ticker": quote.get("ticker"),
+                            "price": quote.get("price"),
+                            "currency": quote.get("currency"),
+                        }
+                        for quote in result_data.get("quotes", [])
+                        if isinstance(quote, dict)
+                    ]
+                if result_data.get("history"):
+                    request_metadata["has_stock_history"] = True
                 if result_data.get("ragas"):
                     request_metadata["ragas"] = result_data["ragas"]
                 timer.finish(
