@@ -452,12 +452,8 @@ def user_label(user: dict[str, Any]) -> str:
 def render_user_picker(default_user_id: str, key_prefix: str) -> tuple[str, dict[str, Any] | None]:
     users = load_seed_users()
     if not users:
-        manual_user = st.text_input(
-            "User ID",
-            value=default_user_id,
-            key=f"{key_prefix}_manual_user",
-        )
-        return manual_user, None
+        st.info("User profiles are still loading. Using the default demo user for now.")
+        return default_user_id, None
 
     options = [user_label(user) for user in users]
     default_index = 0
@@ -472,13 +468,6 @@ def render_user_picker(default_user_id: str, key_prefix: str) -> tuple[str, dict
         key=f"{key_prefix}_user_select",
     )
     selected_user = users[options.index(selected_label)]
-    manual_user = st.text_input(
-        "Or enter User ID manually",
-        value=selected_user.get("user_id", default_user_id),
-        key=f"{key_prefix}_manual_user",
-    )
-    if manual_user and manual_user != selected_user.get("user_id"):
-        return manual_user, None
     return selected_user.get("user_id", default_user_id), selected_user
 
 
